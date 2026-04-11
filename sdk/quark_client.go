@@ -2,6 +2,7 @@ package sdk
 
 import (
 	"bytes"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -490,4 +491,18 @@ func (qc *QuarkClient) setDefaultAPIHeaders(req *http.Request) {
 	if req.Body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
+}
+
+// doOSSRequest 执行 OSS 上传请求（无超时限制，避免 HttpClient.Timeout 的影响）
+func (qc *QuarkClient) doOSSRequest(req *http.Request) (*http.Response, error) {
+	// 为 OSS 上传创建无超时限制的客户端
+	// 上传请求的超时由 context 控制（30分钟）
+	client := &http.Client{
+		Transport: &http.Transport{
+			// 禁用 HTTP/2，与主客户端保持一致
+			TLSNextProto: make(map[string]func(authority string, c *tls.Conn) http.RoundTripper),
+		},
+		// 无超时限制，由 context 控制超时
+	}
+	return client.Do(req)
 }

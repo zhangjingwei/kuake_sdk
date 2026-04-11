@@ -1,6 +1,3 @@
-# 源代码文件
-docs/
-
 # Git 配置文件
 push.sh
 
@@ -35,7 +32,9 @@ storage/
 
 # IDE
 .vscode/
-.github/
+.claude/
+.github/prompts/
+.github/skills/
 .idea/
 *.swp
 *.swo

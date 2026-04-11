@@ -6,54 +6,41 @@
 
 ## 开源说明
 
-本项目采用 **AGPL-3.0 许可证**，完全开源。欢迎贡献代码、报告问题或提出建议。
-
-**重要提示**：本项目禁止商业使用。任何商业使用（包括但不限于 SaaS 服务、商业产品集成等）必须获得明确授权。
-
-- **源代码**：所有源代码已公开，可在 GitHub 仓库中查看和下载
-- **构建**：使用 `build.sh` 脚本可以自行编译各平台的二进制文件
-- **贡献**：欢迎提交 Pull Request 或 Issue
-- **文档**：项目文档和代码注释持续完善中
+本项目采用 **AGPL-3.0** 开源；**商业使用**（含 SaaS、商业产品集成等）须另行取得授权。源代码可自本仓库获取，使用 `build.sh` 可本地编译各平台二进制。欢迎通过 Issue / Pull Request 参与。
 
 ## 目录
 
-- [开源说明](#-开源说明)
-- [功能特性](#-功能特性)
-- [系统要求](#-系统要求)
-- [安装](#-安装)
-- [快速开始](#-快速开始)
-- [配置说明](#-配置说明)
-- [CLI 工具使用](#-cli-工具使用)
-- [变更日志](#-变更日志)
-- [注意事项](#-注意事项)
-- [免责声明](#-免责声明)
-- [许可证](#-许可证)
+- [功能特性](#功能特性)
+- [系统要求](#系统要求)
+- [安装](#安装)
+- [快速开始](#快速开始)
+- [文档与变更](#文档与变更)
+- [免责声明](#免责声明)
+- [许可证](#许可证)
+- [贡献者](#贡献者)
 
 ## 功能特性
 
-- **用户信息**: 获取用户信息
-- **文件列表**: 列出夸克网盘指定目录下的所有文件和子目录
-- **文件信息**: 获取文件或目录的详细信息（大小、修改时间、路径等）
-- **下载链接**: 获取文件的下载链接
-- **文件上传**: 将本地文件上传到夸克网盘（支持大文件分片上传，支持并行上传、断点续传和增量哈希）
-- **文件夹操作**: 创建文件夹
-- **文件操作**: 移动、复制、重命名文件或目录
-- **文件删除**: 删除夸克网盘中的文件或目录
-- **分享功能**: 创建分享链接，支持设置有效期和提取码；取消分享，支持通过 share_id 或文件路径取消分享；转存分享文件到自己的网盘
-- **CLI 工具**: 提供命令行工具，方便其他进程调用
-- **管道模式**: 支持命令链式组合，可与 Unix 工具（如 `jq`、`grep` 等）组合使用，实现复杂的数据处理工作流
-- **OpenClaw 集成**: 支持作为 OpenClaw 技能使用，支持环境变量配置（`KUAKE_COOKIE`、`KUAKE_PATH`），不依赖 PATH 检测
+- 用户信息与网盘目录列表、文件详情、上传/下载、创建目录、移动/复制/重命名/删除
+- 分享创建与取消、分享列表、转存他人分享
+- JSON 输出、管道模式（与 `jq` 等组合）；可选 **OpenClaw** 技能（见 [openclaw/](openclaw/)，`KUAKE_COOKIE` / `KUAKE_PATH`）
+
+更多用法见 [docs/cli.md](docs/cli.md)。
+
+更多文档见：
+- [specs/architecture/spec.md](specs/architecture/spec.md)
+- [docs/agent-skill.md](docs/agent-skill.md)
 
 ## 系统要求
 
-- Linux / macOS / Windows 操作系统
-- 有效的夸克网盘账号和 Cookie
+- Linux / macOS / Windows
+- 有效的夸克网盘账号与 Cookie
 
 ## 安装
 
 ### 从源码构建
 
-需要 Go 1.18+ 和 Git。
+需要 Go 1.18+ 与 Git。
 
 ```bash
 git clone https://github.com/zhangjingwei/kuake_sdk.git
@@ -62,30 +49,15 @@ chmod +x build.sh
 ./build.sh
 ```
 
-构建完成后，二进制文件在 `dist/` 目录中。
+构建产物位于 `dist/`。
 
-### 下载预编译二进制文件
+### 预编译二进制
 
-从 [Releases](https://github.com/zhangjingwei/kuake_sdk/releases) 页面下载对应平台的二进制文件。
-
-**Linux/macOS**:
-```bash
-wget https://github.com/zhangjingwei/kuake_sdk/releases/latest/download/kuake-v1.4.0-linux-amd64
-chmod +x kuake-v1.4.0-linux-amd64
-./kuake-v1.4.0-linux-amd64 user
-```
-
-**Windows**:
-```powershell
-Invoke-WebRequest -Uri "https://github.com/zhangjingwei/kuake_sdk/releases/latest/download/kuake-v1.4.0-windows-amd64.exe" -OutFile "kuake-v1.4.0-windows-amd64.exe"
-.\kuake-v1.4.0-windows-amd64.exe user
-```
+从 [Releases](https://github.com/zhangjingwei/kuake_sdk/releases) 下载对应平台文件，文件名与版本以 Release 页为准。
 
 ## 快速开始
 
-### 1. 创建配置文件
-
-创建 `config.json` 文件：
+1. 在项目目录创建 `config.json`：
 
 ```json
 {
@@ -97,507 +69,39 @@ Invoke-WebRequest -Uri "https://github.com/zhangjingwei/kuake_sdk/releases/lates
 }
 ```
 
-**如何获取 Cookie**：登录夸克网盘，打开开发者工具（F12），在 Network 标签页中复制任意请求的 Cookie 值，粘贴到 `access_tokens` 数组中。
+在浏览器登录夸克网盘，开发者工具（F12）→ Network 中复制请求的 Cookie，将完整 Cookie 字符串写入 `access_tokens`（支持多账号多条）。**勿将 `config.json` 提交到 Git。**
 
-### 2. 使用 CLI 工具
-
-```bash
-./kuake-v1.4.0-linux-amd64 user
-./kuake-v1.4.0-linux-amd64 upload "file.txt" "/file.txt"
-./kuake-v1.4.0-linux-amd64 list "/"
-```
-
-## 配置说明
-
-### 配置文件格式
-
-```json
-{
-  "Quark": {
-    "access_tokens": [
-      "__pus=your_pus_value_here;"
-    ]
-  }
-}
-```
-
-**重要说明**: 
-- `access_tokens` 字段是一个字符串数组，支持配置多个用户的 Cookie
-- 每个字符串存储的是完整的 Cookie 字符串（所有 cookie 用分号和空格分隔）
-- 从浏览器开发者工具中复制完整的 Cookie 值
-- 示例格式：`cookie1=value1; cookie2=value2; cookie3=value3`
-- 支持多用户配置（在数组中添加多个 Cookie 字符串）
-
-**安全提示**: 
-- `config.json` 文件包含敏感信息，请不要将其提交到版本控制系统
-- `.gitignore` 文件已包含 `config.json`，确保不会被意外提交
-- 请妥善保管您的 Cookie，不要分享给他人
-
-## CLI 工具使用
-
-### 基本用法
+2. 运行（示例，请替换为实际二进制名或 `kuake`）：
 
 ```bash
-kuake [options] <command> [arguments...]
-kuake <command> [config.json] [arguments...]  (deprecated: use -c instead)
+./kuake user
+./kuake list "/"
+./kuake upload "file.txt" "/file.txt"
 ```
 
-**选项**：
-- `-c, --config <path>`: 指定配置文件路径（默认: config.json）
-- `-cookies, --cookies <value>`: 直接指定 cookie 值（自动添加 `__pus=` 前缀，绕过配置文件）
-
-### 可用命令
-
-| 命令 | 说明 | 示例 |
-|------|------|------|
-| `user` | 获取用户信息 | `kuake user` |
-| `list [path] [--stream]` | 列出目录内容（默认: "/"），使用 `--stream` 输出流式 JSON 用于管道模式 | `kuake list "/"` 或 `kuake list "/" --stream` |
-| `info <path>` | 获取文件/文件夹信息（支持管道模式） | `kuake info "/file.txt"` |
-| `download <path> [dest]` | 获取文件下载链接或下载到本地（支持管道模式） | `kuake download "/file.txt"` 或 `kuake download "/file.txt" ./local` |
-| `upload <file> <dest> [--max_upload_parallel N]` | 上传文件（上传进度输出到 stderr，支持并行上传） | `kuake upload "file.txt" "/file.txt"` 或 `kuake upload "file.txt" "/file.txt" --max_upload_parallel 4` |
-| `create <name> <pdir>` | 创建文件夹（pdir 为父目录路径，根目录使用 "/"） | `kuake create "test_folder" "/"` |
-| `move <src> <dest>` | 移动文件/文件夹 | `kuake move "/file.txt" "/folder/"` |
-| `copy <src> <dest>` | 复制文件/文件夹 | `kuake copy "/file.txt" "/folder/"` |
-| `rename <path> <newName>` | 重命名文件/文件夹 | `kuake rename "/file.txt" "new_name.txt"` |
-| `delete <path>` | 删除文件/文件夹（支持管道模式） | `kuake delete "/file.txt"` |
-| `share <path> <days> <passcode>` | 创建分享链接 | `kuake share "/file.txt" 7 "false"` |
-| `share-delete <share_id_or_path> [share_id_or_path2] ...` | 取消分享（支持通过 share_id 或文件路径） | `kuake share-delete "fdd8bfd93f21491ab80122538bec310d"` 或 `kuake share-delete "/file.txt"` |
-| `share-list [page] [size] [orderField] [orderType]` | 获取我的分享列表 | `kuake share-list` 或 `kuake share-list 1 50 "created_at" "desc"` |
-| `share-save <share_link> [passcode] [dest_dir]` | 转存分享文件到自己的网盘 | `kuake share-save "https://pan.quark.cn/s/xxx"` 或 `kuake share-save "https://pan.quark.cn/s/xxx" "1234" "/folder"` |
-| `help` | 显示帮助信息 | `kuake help` |
-
-**重要提示**：
-- 所有路径参数必须用引号包裹（`"path"`）
-- 根目录使用 `"/"` 表示
-- `days` 参数：`0`=永久，`1`=1天，`7`=7天，`30`=30天
-- `passcode` 参数：`"true"`=需要提取码，`"false"`=不需要提取码
-- `share-save` 命令说明：
-  - `share_link`: 分享链接（如 `https://pan.quark.cn/s/xxx`），会自动提取 pwd_id
-  - `passcode`: 提取码（可选），如果分享链接中包含提取码会自动提取
-  - `dest_dir`: 目标目录（可选，默认 `"/"`），可以是路径或 FID
-  - 默认会转存分享中的所有文件到指定目录
-- **并行上传参数**：
-  - `--max_upload_parallel N`：设置并行上传的分片数量（1-16，默认 4）
-  - 也支持通过环境变量 `KUAKE_UPLOAD_PARALLEL` 设置
-  - 并行上传仅在满足条件时启用（新上传、多分片文件等）
-  - 断点续传时自动使用顺序上传，确保兼容性
-- **管道模式**：
-  - `list` 命令使用 `--stream` 选项输出流式 JSON（每行一个文件对象）
-  - `delete`、`info`、`download` 命令支持从 stdin 读取 JSON 输入
-  - 自动检测 stdin，有数据时自动进入管道模式
-  - 每行输入应为 JSON 对象，包含 `path` 或 `fid` 字段
-  - 支持与其他 Unix 工具组合使用，如 `jq`、`grep`、`head` 等
-
-### 输出格式
-
-所有命令的结果都以 JSON 格式输出到 stdout：
-
-**成功响应**：
-```json
-{
-  "success": true,
-  "code": "OK",
-  "message": "操作成功",
-  "data": {
-    ...
-  }
-}
-```
-
-**错误响应**：
-```json
-{
-  "success": false,
-  "code": "ERROR_CODE",
-  "message": "错误描述",
-  "error": "详细错误信息"
-}
-```
-
-**注意**：
-- 所有结果（包括成功和错误）都以 JSON 格式输出到 stdout
-- 上传进度、帮助信息和序列化错误输出到 stderr
-- 这样设计便于其他进程解析 JSON 结果，进度信息不会混入 JSON 输出
-
-### 退出码
-
-- `0`: 操作成功
-- `1`: 操作失败
-
-### 使用示例
-
-```bash
-# 获取用户信息（使用默认配置文件 config.json）
-./kuake-{version}-{os}-{arch} user
-
-# 获取用户信息（使用自定义配置文件）
-./kuake-{version}-{os}-{arch} user custom.json
-
-# 列出根目录
-./kuake-{version}-{os}-{arch} list "/"
-
-# 获取文件信息
-./kuake-{version}-{os}-{arch} info "/file.txt"
-
-# 获取文件下载链接
-./kuake-{version}-{os}-{arch} download "/file.txt"
-
-# 上传文件（使用默认并行度 4）
-./kuake-{version}-{os}-{arch} upload "file.txt" "/file.txt"
-
-# 上传文件（指定并行度为 8）
-./kuake-{version}-{os}-{arch} upload "file.txt" "/file.txt" --max_upload_parallel 8
-
-# 上传文件（通过环境变量设置并行度）
-export KUAKE_UPLOAD_PARALLEL=8
-./kuake-{version}-{os}-{arch} upload "file.txt" "/file.txt"
-
-# 创建文件夹（根目录）
-./kuake-{version}-{os}-{arch} create "test_folder" "/"
-
-# 移动文件
-./kuake-{version}-{os}-{arch} move "/file.txt" "/folder/"
-
-# 复制文件
-./kuake-{version}-{os}-{arch} copy "/file.txt" "/folder/"
-
-# 重命名文件
-./kuake-{version}-{os}-{arch} rename "/file.txt" "new_name.txt"
-
-# 删除文件
-./kuake-{version}-{os}-{arch} delete "/file.txt"
-
-# 创建分享链接（7天，不需要提取码）
-./kuake-{version}-{os}-{arch} share "/file.txt" 7 "false"
-
-# 创建分享链接（30天，需要提取码，使用自定义配置文件）
-./kuake-{version}-{os}-{arch} share "/file.txt" 30 "true" custom.json
-
-# 取消分享（通过 share_id）
-./kuake-{version}-{os}-{arch} share-delete "fdd8bfd93f21491ab80122538bec310d"
-
-# 取消分享（通过文件路径，会自动查找对应的 share_id）
-./kuake-{version}-{os}-{arch} share-delete "/file.txt"
-
-# 同时取消多个分享
-./kuake-{version}-{os}-{arch} share-delete "share_id1" "share_id2" "/file.txt"
-
-# 获取我的分享列表（使用默认参数）
-./kuake-{version}-{os}-{arch} share-list
-
-# 获取我的分享列表（指定分页和排序参数）
-./kuake-{version}-{os}-{arch} share-list 1 50 "created_at" "desc"
-
-# 转存分享文件到根目录
-./kuake-{version}-{os}-{arch} share-save "https://pan.quark.cn/s/xxx"
-
-# 转存分享文件（指定提取码和目标目录）
-./kuake-{version}-{os}-{arch} share-save "https://pan.quark.cn/s/xxx" "1234" "/folder"
-
-# 查看帮助
-./kuake-{version}-{os}-{arch} help
-
-# 使用 -cookies 参数（绕过配置文件，只需提供 cookie 值）
-./kuake-{version}-{os}-{arch} -cookies "your_cookie_value_here" user
-./kuake-{version}-{os}-{arch} -cookies "your_cookie_value_here" upload "file.txt" "/folder/file.txt"
-
-# 管道模式示例
-# 列出文件并批量删除
-./kuake-{version}-{os}-{arch} list "/photos" --stream | ./kuake-{version}-{os}-{arch} delete
-
-# 列出文件并获取每个文件的信息
-./kuake-{version}-{os}-{arch} list "/" --stream | ./kuake-{version}-{os}-{arch} info
-
-# 列出文件并获取下载链接
-./kuake-{version}-{os}-{arch} list "/documents" --stream | ./kuake-{version}-{os}-{arch} download
-
-# 结合 jq 进行过滤：列出大文件并删除
-./kuake-{version}-{os}-{arch} list "/" --stream | jq -r 'select(.size > 1000000) | .path' | ./kuake-{version}-{os}-{arch} delete
-
-# 列出文件并下载到指定目录
-./kuake-{version}-{os}-{arch} list "/videos" --stream | ./kuake-{version}-{os}-{arch} download "./downloads"
-```
-
-**注意**：
-- 示例中的 `{version}`、`{os}`、`{arch}` 需要替换为实际值
-- Windows 用户需要添加 `.exe` 扩展名并使用 `.\` 前缀
-- 如果已添加到 PATH，可以直接使用 `kuake` 命令
-
-## 变更日志
-
-### v1.4.0
-
-- **OpenClaw 技能集成**
-  - 新增 kuake OpenClaw 技能支持
-  - 添加环境变量 `KUAKE_COOKIE` 支持，符合 OpenClaw 标准配置方式
-  - 认证优先级：`-cookies` 参数 > 环境变量 `KUAKE_COOKIE` > 配置文件
-  - 支持通过 `KUAKE_PATH` 环境变量指定完整路径，不依赖 PATH 检测
-  - 优化 OpenClaw 技能文档，添加 fallback 逻辑说明
-  - 简化部署文档，提供更清晰的配置选项
-
-### v1.3.9
-
-- 新增 `--policy` 上传去重策略（PR #16）
-  - 新增 `UploadPolicy`/`UploadOptions` 类型定义
-  - 支持三种策略：`skip`（跳过已存在文件）、`rename`（重命名）、`overwrite`（覆盖）
-  - `UploadFile` 函数签名扩展为 4 参数，支持策略配置
-- 并行上传优化（PR #18，8 项核心改动）
-  - 嵌入式哈希：MD5+SHA1 嵌入分片读取，提高上传效率
-  - `parallel_upload` 握手协议：优化并行上传协商流程
-  - `X-Oss-Hash-Ctx` MarshalBinary 修复：修复序列化问题
-  - Nl/Nh 32 位拆分：支持 >536MB 大文件上传
-  - 多线程并发上传：提升上传速度至 7-14 MB/s
-  - 分片级指数退避重试：每个分片最多重试 3 次，提高成功率
-  - 断点续传 PartThread 恢复：支持中断后恢复并行上传状态
-  - `x-oss-user-agent` 版本统一：统一版本标识
-- `user` 命令容量查询 + `--version`（PR #17）
-  - `getMemberInfo()` 合并容量/会员信息：统一用户信息获取接口
-  - 版本号常量定义：规范化版本管理
-  - `--version` 参数拦截：新增版本号查询命令参数
-- 新增管道模式（Pipeline Pattern）支持，支持命令链式组
-  - `list` 命令新增 `--stream` 选项，输出流式 JSON（每行一个文件对象）
-  - `delete`、`info`、`download` 命令支持从 stdin 读取 JSON 输入
-  - 自动检测 stdin，有数据时自动进入管道模式
-  - 支持与其他 Unix 工具（如 `jq`、`grep`、`head` 等）组合使用
-  - 保持向后兼容，无 stdin 时使用命令行参数
-  - 实现流式处理，支持逐行处理大量文件，内存占用低
-  - 改进错误处理，优雅处理 broken pipe 错误
-  - 统一数据类型处理，只处理 `QuarkFileInfo` 类型，提高代码一致性和可维护性
-  - 优化代码结构，移除多类型处理的复杂逻辑，简化代码实现
-
-### v1.3.8
-
-- 新增 `-cookies` 参数支持，可直接通过命令行指定 cookie 值，无需配置文件
-  - 自动为 cookie 值添加 `__pus=` 前缀（如果缺失）
-  - 自动添加末尾分号（如果缺失）
-  - 使用 `-cookies` 参数时，不会读取配置文件，提高效率并避免不一致
-- 修复并行上传逻辑，多分片文件禁用并行上传（因为需要使用 X-Oss-Hash-Ctx）
-
-### v1.3.7
-
-- 新增并行上传功能，支持通过 `--max_upload_parallel` 参数或 `KUAKE_UPLOAD_PARALLEL` 环境变量配置并行度（1-16，默认 4）
-- 改进路径参数处理，明确要求所有路径参数必须用引号包裹
-- 新增转存分享文件功能，新增 `share-save` CLI 命令
-
-### v1.3.6
-
-- 新增 X-Oss-Hash-Ctx 支持，实现 OSS 分片上传的增量 SHA1 哈希上下文
-- 改进断点续传功能，支持 HashCtx 的保存和恢复
-
-### v1.3.5
-
-- 新增断点续传功能，上传中断后可自动恢复
-- 改进上传进度显示，显示上传速度、剩余时间等信息
-- 优化命令行参数解析，支持 `-c/--config` 参数指定配置文件路径
-- 增强上传错误处理和超时处理
-- 改进分享创建错误处理，增加重试机制
-
-### v1.3.4
-
-- 修复配置文件读取路径问题，支持从可执行文件所在目录读取配置文件
-
-### v1.3.3
-
-- 修复 Windows 路径处理问题，支持跨平台路径兼容性
-
-### v1.3.2
-
-- 新增取消分享功能，新增 `share-delete` CLI 命令
-
-### v1.3.1
-
-- 修复 CLI 错误消息转义问题
-- 优化 API 错误响应处理
-- 新增完整的单元测试套件
-
----
-
-## 注意事项
-
-- **文件名格式**：二进制文件名包含版本号，格式为 `kuake-{version}-{os}-{arch}` 或 `kuake-{version}-{os}-{arch}.exe`（Windows）
-- **执行权限**：Linux/macOS 二进制文件已包含执行权限，可直接使用 `./` 前缀执行
-- **路径参数**：所有路径参数必须用引号包裹（包含空格或特殊字符时），例如：`"./file name.txt"`、`"/path/to/file"`
-- **跨平台路径支持**：
-  - Windows 用户可以使用 Windows 风格的路径（`d:\a\b\c`），会自动转换为 Unix 风格
-  - Linux/macOS 用户继续使用标准 Unix 路径格式（`/a/b/c`）
-  - 所有路径最终都会标准化为 Unix 风格，确保跨平台一致性
-- **配置文件**：
-  - 默认配置文件路径：`config.json`（当前目录）
-  - 配置文件参数是可选的，放在命令之后、其他参数之前
-  - 配置文件参数必须是 `.json` 扩展名
-  - 示例：`kuake user custom.json`（使用自定义配置文件）
-- **Cookie 参数**：
-  - 使用 `-cookies` 或 `--cookies` 参数可直接指定 cookie 值，无需配置文件
-  - 只需提供 cookie 值，工具会自动添加 `__pus=` 前缀和末尾分号
-  - 使用 `-cookies` 参数时，不会读取配置文件，提高效率并避免不一致
-  - 示例：`kuake -cookies "your_cookie_value" user`
-- **操作说明**：
-  - 所有操作都通过夸克网盘 API 进行
-  - 需要有效的 Cookie（access_token）才能使用
-  - 上传操作支持进度显示（输出到 stderr）
-  - 上传操作支持并行上传，可通过 `--max_upload_parallel` 参数或 `KUAKE_UPLOAD_PARALLEL` 环境变量配置（1-16，默认 4）
-  - 删除目录会递归删除所有子文件和子目录
-- **输出格式**：
-  - CLI 工具的所有结果以 JSON 格式输出到 stdout，方便其他进程解析
-  - 上传进度、帮助信息和序列化错误输出到 stderr，不会混入 JSON 输出
-  - 成功时退出码为 0，失败时为 1
+子命令表、`-c` / `-cookies`、管道模式与完整示例见 [docs/cli.md](docs/cli.md)。
+
+## 文档与变更
+
+| 文档 | 说明 |
+|------|------|
+| [docs/cli.md](docs/cli.md) | CLI 配置、命令表、JSON 约定与示例 |
+| [docs/CHANGELOG.md](docs/CHANGELOG.md) | 版本变更记录 |
+| [docs/DISCLAIMER.md](docs/DISCLAIMER.md) | 完整免责声明 |
+| [openclaw/kuake_skill/](openclaw/kuake_skill/) | OpenClaw skill 包，用户可将项目工作区作为 OpenClaw workspace 加载以启用 kuake CLI 能力 |
 
 ## 免责声明
 
-**重要提示：请在使用本工具前仔细阅读并完全理解本免责声明。使用本工具即表示您已阅读、理解并完全同意本免责声明的所有条款。**
-
-### 1. 非官方工具声明
-
-1.1 本项目（"Kuake SDK"）是一个**非官方的第三方开源工具**，与夸克网盘（"Quark"）及其关联公司（统称"夸克官方"）**完全无关**，**未获得夸克官方的任何授权、认可或支持**。
-
-1.2 本项目**不隶属于、不代表、不代表**夸克官方，也不代表夸克官方的任何立场或政策。
-
-1.3 本项目**仅用于学习和研究目的**，不应用于任何商业用途（除非获得明确授权）。
-
-### 2. 使用风险与责任
-
-2.1 **用户自行承担所有风险**：使用本工具进行任何操作时，用户**完全自行承担**所有风险和责任，包括但不限于：
-   - 数据丢失、损坏、泄露或无法恢复
-   - 账号被封禁、限制、暂停或永久禁用
-   - API 调用失败、超时或返回错误结果
-   - 违反夸克官方服务条款导致的任何后果
-   - 违反相关法律法规导致的任何后果
-   - 因使用本工具导致的任何直接或间接损失
-   - 其他任何不可预见或可预见的后果
-
-2.2 **不提供任何保证**：本工具按"现状"提供，**不提供任何明示或暗示的保证**，包括但不限于：
-   - 不保证工具的功能完整性、准确性、可靠性或可用性
-   - 不保证工具与夸克官方 API 的兼容性
-   - 不保证工具的安全性、无错误性或无病毒性
-   - 不保证工具满足用户的特定需求或期望
-   - 不保证工具的持续可用性或维护
-
-### 3. API 与服务条款
-
-3.1 **API 变更风险**：夸克官方**可能随时更改、限制或终止其 API**，这可能导致本工具**完全无法使用**。项目维护者**不保证**工具的持续可用性，**不承担**因 API 变更导致的任何责任。
-
-3.2 **遵守服务条款**：使用本工具即表示您**已阅读、理解并同意遵守**夸克官方的所有服务条款、使用协议、隐私政策等相关规定。
-
-3.3 **禁止滥用**：用户**不得**使用本工具进行以下行为：
-   - 违反夸克官方服务条款的任何行为
-   - 滥用 API、批量操作、爬虫或自动化脚本（除非明确允许）
-   - 侵犯他人知识产权、隐私权或其他合法权益
-   - 传播恶意软件、病毒或有害代码
-   - 进行任何非法、欺诈或不当行为
-   - 干扰、破坏或攻击夸克官方的服务或系统
-
-3.4 **违规后果**：任何违反服务条款的行为可能导致：
-   - 账号被立即封禁或限制
-   - 承担相应的法律责任
-   - 项目维护者有权拒绝提供支持或服务
-
-### 4. 数据安全与隐私
-
-4.1 **Cookie 安全责任**：
-   - 用户**完全自行负责** Cookie 的安全保管和使用
-   - **禁止**将 Cookie 分享给任何第三方
-   - **禁止**在公共场合、不可信环境或不安全设备上使用本工具
-   - **建议**定期更换 Cookie 以确保账号安全
-   - 因 Cookie 泄露导致的任何损失，项目维护者**不承担任何责任**
-
-4.2 **数据隐私**：
-   - 本工具**不会收集、存储或传输**用户的任何个人数据或文件内容
-   - 所有操作均在用户本地环境执行
-   - 用户**自行负责**其数据的安全和隐私保护
-
-4.3 **第三方服务**：本工具依赖夸克官方的 API 服务，用户的数据和操作**受夸克官方的隐私政策和服务条款约束**。
-
-### 5. 知识产权
-
-5.1 **项目知识产权**：本项目的源代码、文档、设计等**知识产权归项目维护者所有**，受 AGPL-3.0 许可证保护。
-
-5.2 **第三方知识产权**：本工具可能使用或引用第三方库、API 或服务，其知识产权归各自所有者所有。
-
-5.3 **用户内容**：用户通过本工具上传、存储或管理的任何内容，其知识产权归用户或相关权利人所有，项目维护者**不主张任何权利**。
-
-### 6. 法律免责
-
-6.1 **完全免责**：在法律允许的最大范围内，项目维护者及其贡献者**不对**以下事项承担任何责任：
-   - 使用本工具造成的任何直接、间接、偶然、特殊、惩罚性或后果性损失
-   - 数据丢失、业务中断、利润损失、商誉损失或其他经济损失
-   - 因使用本工具导致的任何法律纠纷、诉讼或索赔
-   - 因 API 变更、服务中断或工具失效导致的任何损失
-   - 因违反服务条款、法律法规导致的任何后果
-   - 因安全漏洞、恶意攻击或技术故障导致的任何损失
-
-6.2 **责任限制**：即使项目维护者已被告知可能发生此类损失，**也不承担**任何责任。
-
-6.3 **适用法律**：本免责声明受中华人民共和国法律管辖。如发生争议，应通过友好协商解决；协商不成的，提交项目维护者所在地有管辖权的人民法院解决。
-
-### 7. 合规性要求
-
-7.1 **法律法规遵守**：用户**必须遵守**所有适用的法律法规，包括但不限于：
-   - 《中华人民共和国网络安全法》
-   - 《中华人民共和国数据安全法》
-   - 《中华人民共和国个人信息保护法》
-   - 其他相关法律法规
-
-7.2 **禁止用途**：用户**不得**将本工具用于任何非法、有害、欺诈或不当目的。
-
-7.3 **出口管制**：用户**必须遵守**所有适用的出口管制法律法规，不得将本工具用于受限制的目的或地区。
-
-### 8. 技术支持与维护
-
-8.1 **不提供技术支持**：项目维护者**不提供**任何形式的技术支持、维护或更新保证。
-
-8.2 **项目状态**：项目可能随时**暂停、终止或变更**，项目维护者**不承担**任何通知义务。
-
-8.3 **社区支持**：用户可以通过 GitHub Issues 等渠道寻求社区帮助，但**不保证**获得回复或解决方案。
-
-### 9. 建议与最佳实践
-
-9.1 **使用建议**：
-   - **强烈建议**在生产环境使用前进行充分测试
-   - **强烈建议**定期备份重要数据
-   - **强烈建议**遵守夸克官方的使用规范和服务条款
-   - **建议**在非关键场景下使用本工具
-   - **建议**定期检查工具更新和安全公告
-
-9.2 **风险控制**：
-   - 使用前请评估风险并采取适当的安全措施
-   - 建议使用测试账号进行验证
-   - 建议限制使用频率和操作范围
-
-### 10. 免责声明的修改
-
-10.1 项目维护者**保留随时修改**本免责声明的权利，修改后的免责声明将在项目仓库中发布。
-
-10.2 继续使用本工具即表示您**接受修改后的免责声明**。
-
----
-
-**最终声明**：
-
-**使用本工具即表示您已充分理解并完全同意上述所有条款。如果您不同意本免责声明的任何内容，请立即停止使用本工具。项目维护者不对因使用本工具导致的任何损失、损害或法律后果承担任何责任。**
+本工具为**非官方**第三方项目，与夸克网盘官方无关；使用可能导致账号风险、数据丢失或 API 变更导致不可用等，**风险自负**。使用即表示您已阅读并同意完整条款，详见 [docs/DISCLAIMER.md](docs/DISCLAIMER.md)。
 
 ## 许可证
 
-本项目采用 **AGPL-3.0 许可证**。详情请参阅 [LICENSE](LICENSE) 文件。
-
-**许可证要点**：
-- 允许：学习、研究、修改、分发
-- 允许：个人和非商业使用
-- 禁止：商业使用（包括 SaaS 服务、商业产品集成等）
-- 要求：使用本项目的衍生作品也必须采用 AGPL-3.0 许可证并开源
-
-**商业使用授权**：如需商业使用，请联系项目维护者获得授权。
-
----
+本项目采用 **AGPL-3.0**，详见 [LICENSE](LICENSE)。衍生作品须以相同协议开源。**商业使用**请联系维护者取得授权。
 
 ## 贡献者
 
-感谢所有为项目做出贡献的开发者！
+感谢所有贡献者，包括但不限于：
 
-- [@Cody292](https://github.com/Cody292) - 并行上传功能（PR #13）
-- [@Cody292](https://github.com/Cody292) - `--policy` 上传去重策略（PR #16）
-- [@Cody292](https://github.com/Cody292) - user 命令容量查询 + `--version`（PR #17）
-- [@Cody292](https://github.com/Cody292) - 并行上传优化（PR #18）
+- [@Cody292](https://github.com/Cody292) — 并行上传（PR #13）、`--policy` 上传策略（PR #16）、user 容量与 `--version`（PR #17）、并行上传优化（PR #18）
 
-欢迎提交 Pull Request 或 Issue 来帮助改进项目！
-
----
+欢迎提交 Issue 与 Pull Request。

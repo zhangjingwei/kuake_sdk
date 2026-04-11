@@ -220,9 +220,6 @@ func (qc *QuarkClient) uploadPartsParallel(
 	hashMD5 hash.Hash, // 嵌入式哈希：生产者累积计算 MD5（用于 upHash）
 	hashSHA1ForUpHash hash.Hash, // 嵌入式哈希：生产者累积计算 SHA1（用于 upHash）
 ) (map[int]string, error) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
 	jobCh := make(chan uploadPartJob, uploadParallel*2)
 	resultCh := make(chan uploadPartResult, uploadParallel*2)
 
@@ -232,17 +229,11 @@ func (qc *QuarkClient) uploadPartsParallel(
 		go func() {
 			defer workerWG.Done()
 			for job := range jobCh {
-				if ctx.Err() != nil {
-					return
-				}
 				// 分片级重试：最多重试 3 次，指数退避（1s, 2s, 4s）
 				const maxRetries = 3
 				var etag string
 				var lastErr error
 				for attempt := 0; attempt <= maxRetries; attempt++ {
-					if ctx.Err() != nil {
-						return
-					}
 					var uploadErr error
 					etag, _, uploadErr = qc.upPart(pre, mimeType, job.partNumber, job.chunkData, job.hashCtx) // 【Round 20.5】恢复传递 HashCtx。虽然是并行模式，但服务端仍要求每个分片携带 Context，最终在 commit 阶段做链式跨分片校验。
 					if uploadErr == nil {
@@ -266,17 +257,12 @@ func (qc *QuarkClient) uploadPartsParallel(
 						partNumber: job.partNumber,
 						err:        fmt.Errorf("failed to upload part %d (after %d retries): %w", job.partNumber, maxRetries, lastErr),
 					}
-					cancel()
 					return
 				}
-				select {
-				case resultCh <- uploadPartResult{
+				resultCh <- uploadPartResult{
 					partNumber: job.partNumber,
 					size:       int64(len(job.chunkData)),
 					etag:       etag,
-				}:
-				case <-ctx.Done():
-					return
 				}
 			}
 		}()
@@ -291,10 +277,6 @@ func (qc *QuarkClient) uploadPartsParallel(
 		var processedBytes int64
 
 		for {
-			if ctx.Err() != nil {
-				return
-			}
-
 			chunk := make([]byte, partSize)
 			n, err := file.Read(chunk)
 			if err == io.EOF {
@@ -305,7 +287,6 @@ func (qc *QuarkClient) uploadPartsParallel(
 					partNumber: partNumber,
 					err:        fmt.Errorf("failed to read file chunk: %w", err),
 				}
-				cancel()
 				return
 			}
 			if n == 0 {
@@ -342,11 +323,7 @@ func (qc *QuarkClient) uploadPartsParallel(
 				hashCtx:    currentHashCtx,
 			}
 
-			select {
-			case jobCh <- job:
-			case <-ctx.Done():
-				return
-			}
+			jobCh <- job
 			partNumber++
 		}
 	}()
@@ -386,7 +363,7 @@ func (qc *QuarkClient) uploadPartsParallel(
 		if result.err != nil {
 			if firstErr == nil {
 				firstErr = result.err
-				cancel()
+				close(jobCh)
 			}
 			continue
 		}
@@ -645,7 +622,8 @@ func (qc *QuarkClient) upPart(pre *PreUploadResponse, mimeType string, partNumbe
 	req = req.WithContext(ctx)
 
 	// 发送请求
-	resp, err := qc.HttpClient.Do(req)
+	// 注意：使用无超时的 HTTP 客户端进行 OSS 上传，避免 HttpClient.Timeout (30秒) 的影响
+	resp, err := qc.doOSSRequest(req)
 	if err != nil {
 		return "", nil, fmt.Errorf("failed to upload chunk: %w", err)
 	}
@@ -759,7 +737,8 @@ func (qc *QuarkClient) upCommit(pre *PreUploadResponse, etags []string) (*Finish
 	req = req.WithContext(ctx)
 
 	// 发送请求
-	commitResp, err := qc.HttpClient.Do(req)
+	// 注意：使用无超时的 HTTP 客户端进行 OSS 上传，避免 HttpClient.Timeout (30秒) 的影响
+	commitResp, err := qc.doOSSRequest(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to commit upload: %w", err)
 	}
