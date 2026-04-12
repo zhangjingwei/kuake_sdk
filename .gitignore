@@ -48,3 +48,7 @@ RELEASE_NOTES_*.md
 release.yml
 cmd/config.json
 tip.txt
+
+# Worktrees
+.worktrees/
+worktrees/
