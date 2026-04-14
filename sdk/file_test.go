@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"kuake_sdk/sdk/validation"
 )
 
 func TestNormalizePath(t *testing.T) {
@@ -438,6 +440,40 @@ func TestUploadFile(t *testing.T) {
 				t.Logf("UploadFile() returned unsuccessful response (may be expected): %s", response.Message)
 			}
 		})
+	}
+}
+
+func TestUploadFile_InvalidDestPath(t *testing.T) {
+	client := createTestClient(t)
+	if client == nil {
+		t.Fatal("Failed to create test client")
+	}
+
+	tmpFile := filepath.Join(t.TempDir(), "test_upload.txt")
+	if err := os.WriteFile(tmpFile, []byte("test content"), 0644); err != nil {
+		t.Fatalf("Failed to create test file: %v", err)
+	}
+
+	response, err := client.UploadFile(tmpFile, "/../secret.txt", nil, nil)
+	if err != nil {
+		t.Fatalf("UploadFile() returned unexpected error: %v", err)
+	}
+	if response == nil {
+		t.Fatal("UploadFile() returned nil response")
+	}
+	if response.Success {
+		t.Errorf("UploadFile() succeeded unexpectedly for invalid dest path")
+	}
+	if response.Code != "FILE_PATH_TRAVERSAL" {
+		t.Errorf("UploadFile() code = %q, want FILE_PATH_TRAVERSAL", response.Code)
+	}
+}
+
+func TestUploadPolicyFromParams_NonStringUsesSkip(t *testing.T) {
+	params := map[string]interface{}{"policy": 123}
+	validation.UploadOptionsDefaults.Apply(params)
+	if uploadPolicyFromParams(params) != UploadPolicySkip {
+		t.Fatalf("want skip when policy is not a string, got %v", uploadPolicyFromParams(params))
 	}
 }
 
@@ -925,5 +961,98 @@ func TestPathNormalizationInFunctions(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, tt.testFunc)
+	}
+}
+
+func TestCopy_PathTraversal_ReturnsStandardResponse(t *testing.T) {
+	qc := &QuarkClient{}
+	resp, err := qc.Copy("/a/../b", "/dest")
+	if err != nil {
+		t.Fatalf("unexpected err: %v", err)
+	}
+	if resp == nil || resp.Success || resp.Code != "FILE_PATH_TRAVERSAL" {
+		t.Fatalf("got success=%v code=%q", resp != nil && resp.Success, resp.Code)
+	}
+}
+
+func TestMove_PathTraversal_ReturnsStandardResponse(t *testing.T) {
+	qc := &QuarkClient{}
+	resp, err := qc.Move("/../x", "/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp == nil || resp.Success {
+		t.Fatalf("expected validation failure, got %#v", resp)
+	}
+}
+
+func TestRename_EmptyNewName_ReturnsStandardResponse(t *testing.T) {
+	qc := &QuarkClient{}
+	resp, err := qc.Rename("/foo", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp == nil || resp.Success {
+		t.Fatalf("expected validation failure, got %#v", resp)
+	}
+}
+
+func TestList_PathTraversal_ReturnsStandardResponse(t *testing.T) {
+	qc := &QuarkClient{}
+	resp, err := qc.List("/../etc")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp == nil || resp.Success {
+		t.Fatalf("expected validation failure, got %#v", resp)
+	}
+}
+
+func TestGetFileInfo_PathTraversal_ReturnsStandardResponse(t *testing.T) {
+	qc := &QuarkClient{}
+	resp, err := qc.GetFileInfo("/a/../b")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp == nil || resp.Success {
+		t.Fatalf("expected validation failure, got %#v", resp)
+	}
+}
+
+func TestDelete_PathTraversal_ReturnsStandardResponse(t *testing.T) {
+	qc := &QuarkClient{}
+	resp, err := qc.Delete("/a/../b")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp == nil || resp.Success {
+		t.Fatalf("expected validation failure, got %#v", resp)
+	}
+}
+
+func TestGetDownloadURL_InvalidFid_ReturnsValidationError(t *testing.T) {
+	qc := &QuarkClient{}
+	_, err := qc.GetDownloadURL("bad/fid")
+	if err == nil {
+		t.Fatal("expected error")
+	}
+}
+
+func TestDownloadFile_InvalidFid_ReturnsValidationError(t *testing.T) {
+	qc := &QuarkClient{}
+	err := qc.DownloadFile("bad/fid", "", "t.bin", nil)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+}
+
+func TestCreateFolder_EmptyName_ReturnsStandardResponse(t *testing.T) {
+	qc := &QuarkClient{}
+	resp, err := qc.CreateFolder("  ", "0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp == nil || resp.Success {
+		t.Fatalf("expected validation failure, got %#v", resp)
 	}
 }

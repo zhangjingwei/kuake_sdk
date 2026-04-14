@@ -2,16 +2,20 @@ package sdk
 
 import (
 	"bytes"
+	"crypto/rand"
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
-	"math/rand"
+	"math/big"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
 	"strings"
 	"time"
+
+	"kuake_sdk/sdk/validation"
 )
 
 // NewQuarkClient 创建夸克网盘客户端（支持多个 token）
@@ -40,9 +44,14 @@ func NewQuarkClient(configPath string, cookies ...string) *QuarkClient {
 			panic("at least one access token is required")
 		}
 
-		// 随机选择一个 token 作为初始 token
-		rng := rand.New(rand.NewSource(time.Now().UnixNano()))
-		initialIdx = rng.Intn(len(accessTokens))
+		// 使用 crypto/rand 安全地随机选择一个 token 作为初始 token
+		n, err := rand.Int(rand.Reader, big.NewInt(int64(len(accessTokens))))
+		if err != nil {
+			// 如果随机失败，回退到第一个 token（ deterministic fallback）
+			initialIdx = 0
+		} else {
+			initialIdx = int(n.Int64())
+		}
 		initialToken = accessTokens[initialIdx]
 	}
 
@@ -68,12 +77,21 @@ func NewQuarkClient(configPath string, cookies ...string) *QuarkClient {
 	return client
 }
 
-// SetBaseURL 设置自定义 API 基础 URL
+// SetBaseURL 设置自定义 API 基础 URL。
+// 入参经 TrimSpace 后须非空，且为可解析的 http/https URL；否则忽略本次设置并保留原 baseURL（本方法无 error 返回，与现有 API 一致）。
 func (qc *QuarkClient) SetBaseURL(baseURL string) {
+	baseURL = strings.TrimSpace(baseURL)
+	if err := validation.NonEmpty().Validate(baseURL); err != nil {
+		return
+	}
+	u, err := url.Parse(baseURL)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") {
+		return
+	}
 	qc.baseURL = baseURL
 }
 
-// GetCookies 获取解析后的 cookie 字典
+// GetCookies 返回解析后的 cookie 字典。无外部输入参数，不进行入参校验。
 func (qc *QuarkClient) GetCookies() map[string]string {
 	return qc.cookies
 }
@@ -388,8 +406,15 @@ func (qc *QuarkClient) parseResponse(respMap map[string]interface{}, target inte
 	return nil
 }
 
-// ConvertToFileInfo 将 QuarkFileInfo 转换为 FileInfo
+// ConvertToFileInfo 将 QuarkFileInfo 转换为 FileInfo。
+// 对 fid、file_name 做非空校验；校验失败返回 nil（无 error 返回，与现有 API 一致）。
 func (qc *QuarkClient) ConvertToFileInfo(qf QuarkFileInfo) *FileInfo {
+	if err := validation.NonEmpty().Validate(qf.Fid); err != nil {
+		return nil
+	}
+	if err := validation.NonEmpty().Validate(qf.Name); err != nil {
+		return nil
+	}
 	return &FileInfo{
 		Name:        qf.Name,
 		Path:        qf.Path,
@@ -493,8 +518,79 @@ func (qc *QuarkClient) setDefaultAPIHeaders(req *http.Request) {
 	}
 }
 
+// isSSRFProtectedURL 检查 URL 是否存在 SSRF 风险
+// 阻止访问本地地址、私有 IP 和元数据服务
+func isSSRFProtectedURL(url *url.URL) error {
+	if url == nil {
+		return fmt.Errorf("URL is nil")
+	}
+
+	scheme := url.Scheme
+	if scheme != "http" && scheme != "https" {
+		return fmt.Errorf("invalid URL scheme: %s", scheme)
+	}
+
+	host := url.Hostname()
+	if host == "" {
+		return fmt.Errorf("empty hostname")
+	}
+
+	// 阻止常见本地主机名
+	lowerHost := strings.ToLower(host)
+	if lowerHost == "localhost" || lowerHost == "127.0.0.1" || lowerHost == "::1" {
+		return fmt.Errorf("SSRF prevention: blocked request to localhost")
+	}
+
+	// 阻止元数据服务地址
+	metadataServices := []string{
+		"169.254.169.254", // AWS metadata
+		"100.100.100.200", // Alibaba Cloud metadata
+		"metadata.google", // Google Cloud metadata
+		"metadata.azure.com",
+	}
+	for _, ms := range metadataServices {
+		if strings.Contains(lowerHost, ms) {
+			return fmt.Errorf("SSRF prevention: blocked request to metadata service")
+		}
+	}
+
+	// 阻止私有 IP 地址
+	ip := net.ParseIP(host)
+	if ip != nil {
+		if isPrivateIP(ip) {
+			return fmt.Errorf("SSRF prevention: blocked request to private IP %s", host)
+		}
+	}
+
+	return nil
+}
+
+// isPrivateIP 检查 IP 是否为私有地址
+func isPrivateIP(ip net.IP) bool {
+	if ip == nil {
+		return false
+	}
+	// 10.0.0.0/8
+	if ip4 := ip.To4(); ip4 != nil {
+		return ip4[0] == 10 ||
+			ip4[0] == 172 && ip4[1] >= 16 && ip4[1] <= 31 ||
+			ip4[0] == 192 && ip4[1] == 168 ||
+			ip4[0] == 127
+	}
+	// IPv6 localhost
+	if ip.To16() != nil && ip.IsLoopback() {
+		return true
+	}
+	return false
+}
+
 // doOSSRequest 执行 OSS 上传请求（无超时限制，避免 HttpClient.Timeout 的影响）
 func (qc *QuarkClient) doOSSRequest(req *http.Request) (*http.Response, error) {
+	// SSRF 防护：验证 URL
+	if err := isSSRFProtectedURL(req.URL); err != nil {
+		return nil, err
+	}
+
 	// 为 OSS 上传创建无超时限制的客户端
 	// 上传请求的超时由 context 控制（30分钟）
 	client := &http.Client{

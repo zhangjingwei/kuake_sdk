@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"kuake_sdk/cmd/validation"
 	"kuake_sdk/sdk"
 	"os"
 	"path/filepath"
@@ -356,37 +357,7 @@ func hasStdinData() bool {
 // 1. 完整响应格式：{"success": true, "data": {"path": "...", "fid": "..."}} - 流式输出格式
 // 2. 简化格式：{"path": "...", "fid": "..."}
 func extractPathFromJSON(jsonStr string) (string, string, error) {
-	var data map[string]interface{}
-	if err := json.Unmarshal([]byte(jsonStr), &data); err != nil {
-		return "", "", err
-	}
-
-	var path, fid string
-
-	// 检查是否是完整响应格式（流式输出格式）
-	if dataObj, ok := data["data"].(map[string]interface{}); ok {
-		// 直接提取 data 中的 path 和 fid
-		if p, ok := dataObj["path"].(string); ok {
-			path = p
-		}
-		if f, ok := dataObj["fid"].(string); ok {
-			fid = f
-		}
-	}
-
-	// 如果没有从 data 中提取到，尝试从根对象提取（简化格式）
-	if path == "" {
-		if p, ok := data["path"].(string); ok {
-			path = p
-		}
-	}
-	if fid == "" {
-		if f, ok := data["fid"].(string); ok {
-			fid = f
-		}
-	}
-
-	return path, fid, nil
+	return validation.ExtractPathFromJSON(jsonStr)
 }
 
 // processStdinLines 从 stdin 逐行读取并处理
@@ -533,7 +504,7 @@ func handleUpload(client *sdk.QuarkClient, args []string) *CLIResult {
 				}
 			}
 			value := strings.TrimSpace(args[i+1])
-			parallel, err := strconv.Atoi(value)
+			parallel, err := validation.ParseOptionalIntArg(value, "max_upload_parallel", 1)
 			if err != nil || parallel < 1 {
 				return &CLIResult{
 					Success: false,
@@ -1051,28 +1022,22 @@ func handleShareCreate(client *sdk.QuarkClient, args []string) *CLIResult {
 	path := args[0]
 
 	// 解析有效期天数（必传）
-	expireDays, err := strconv.Atoi(args[1])
+	expireDays, err := validation.ParseIntArg(args[1], "days")
 	if err != nil {
 		return &CLIResult{
 			Success: false,
 			Code:    "INVALID_ARGS",
-			Message: "days must be a number",
+			Message: err.Error(),
 		}
 	}
 
 	// 解析是否需要提取码（必传）
-	passcodeArg := args[2]
-	var needPasscode bool
-	switch passcodeArg {
-	case "true":
-		needPasscode = true
-	case "false":
-		needPasscode = false
-	default:
+	needPasscode, err := validation.ParseBoolArg(args[2], "passcode")
+	if err != nil {
 		return &CLIResult{
 			Success: false,
 			Code:    "INVALID_ARGS",
-			Message: "passcode must be 'true' or 'false'",
+			Message: err.Error(),
 		}
 	}
 
@@ -1465,12 +1430,12 @@ func handleShareList(client *sdk.QuarkClient, args []string) *CLIResult {
 	orderType := "desc"
 
 	if len(args) > 0 {
-		if p, err := strconv.Atoi(args[0]); err == nil && p > 0 {
+		if p, err := validation.ParseOptionalIntArg(args[0], "page", page); err == nil && p > 0 {
 			page = p
 		}
 	}
 	if len(args) > 1 {
-		if s, err := strconv.Atoi(args[1]); err == nil && s > 0 {
+		if s, err := validation.ParseOptionalIntArg(args[1], "size", size); err == nil && s > 0 {
 			size = s
 		}
 	}

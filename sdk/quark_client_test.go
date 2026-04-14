@@ -110,6 +110,27 @@ func TestSetBaseURL(t *testing.T) {
 	}
 }
 
+func TestSetBaseURL_IgnoresEmptyOrNonHTTP(t *testing.T) {
+	client := createTestClient(t)
+	if client == nil {
+		t.Fatal("Failed to create test client")
+	}
+	valid := "https://example.com/base"
+	client.SetBaseURL(valid)
+	client.SetBaseURL("   ")
+	if client.baseURL != valid {
+		t.Errorf("whitespace-only input must not change baseURL, got %q", client.baseURL)
+	}
+	client.SetBaseURL("")
+	if client.baseURL != valid {
+		t.Errorf("empty input must not change baseURL, got %q", client.baseURL)
+	}
+	client.SetBaseURL("ftp://example.com")
+	if client.baseURL != valid {
+		t.Errorf("non-http(s) scheme must not change baseURL, got %q", client.baseURL)
+	}
+}
+
 func TestGetCookies(t *testing.T) {
 	client := createTestClient(t)
 	if client == nil {
@@ -223,6 +244,7 @@ func TestConvertToFileInfo(t *testing.T) {
 		{
 			name: "convert file info",
 			qf: QuarkFileInfo{
+				Fid:         "fid_file_1",
 				Name:        "test.txt",
 				Path:        "/test.txt",
 				Size:        1024,
@@ -238,6 +260,7 @@ func TestConvertToFileInfo(t *testing.T) {
 		{
 			name: "convert directory info",
 			qf: QuarkFileInfo{
+				Fid:         "fid_dir_1",
 				Name:        "test_dir",
 				Path:        "/test_dir",
 				Size:        0,
@@ -255,6 +278,9 @@ func TestConvertToFileInfo(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := client.ConvertToFileInfo(tt.qf)
+			if got == nil {
+				t.Fatal("ConvertToFileInfo() returned nil")
+			}
 			if got.Name != tt.want.Name {
 				t.Errorf("ConvertToFileInfo() Name = %v, want %v", got.Name, tt.want.Name)
 			}
@@ -268,6 +294,19 @@ func TestConvertToFileInfo(t *testing.T) {
 				t.Errorf("ConvertToFileInfo() IsDirectory = %v, want %v", got.IsDirectory, tt.want.IsDirectory)
 			}
 		})
+	}
+}
+
+func TestConvertToFileInfo_InvalidReturnsNil(t *testing.T) {
+	client := createTestClient(t)
+	if client == nil {
+		t.Fatal("Failed to create test client")
+	}
+	if got := client.ConvertToFileInfo(QuarkFileInfo{Name: "x"}); got != nil {
+		t.Errorf("missing fid: want nil, got %#v", got)
+	}
+	if got := client.ConvertToFileInfo(QuarkFileInfo{Fid: "f", Name: ""}); got != nil {
+		t.Errorf("missing name: want nil, got %#v", got)
 	}
 }
 
