@@ -11,6 +11,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"hash"
 	"io"
@@ -22,6 +23,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"kuake_sdk/sdk/validation"
 )
 
 // isRetryableError 判断错误是否为可重试的瞬时网络故障
@@ -407,6 +410,15 @@ func stripQuotes(path string) string {
 }
 
 // normalizePath 将路径标准化为 Unix 风格（使用 / 作为分隔符）
+// uploadPolicyFromParams 从 map 读取 policy，非字符串或缺失时使用 skip，避免类型断言 panic。
+func uploadPolicyFromParams(params map[string]interface{}) UploadPolicy {
+	s, ok := validation.SafeString(params, "policy")
+	if !ok || s == "" {
+		return UploadPolicySkip
+	}
+	return UploadPolicy(s)
+}
+
 func normalizePath(path string) string {
 	path = stripQuotes(path)
 	path = strings.ReplaceAll(path, "\\", "/")
@@ -426,6 +438,45 @@ func normalizeRootDir(path string) string {
 		return "0"
 	}
 	return path
+}
+
+func isRootRemoteMark(trimmed string) bool {
+	return trimmed == "" || trimmed == "/" || trimmed == "." || trimmed == "0"
+}
+
+// validateRemotePathOrFid 校验网盘远程路径或以 fid 形式传入的位置（根目录标记视为合法）。
+func validateRemotePathOrFid(s string) error {
+	s = strings.TrimSpace(stripQuotes(s))
+	if isRootRemoteMark(s) {
+		return nil
+	}
+	if strings.Contains(s, "/") || strings.HasPrefix(s, "/") {
+		_, err := validation.ValidPathResult(s)
+		return err
+	}
+	return validation.ValidFID().Validate(s)
+}
+
+func validatePdirFidForCreateFolder(pdirFid string) error {
+	p := strings.TrimSpace(stripQuotes(pdirFid))
+	if p == "" || p == "/" || p == "." {
+		return nil
+	}
+	return validation.ValidFID().Validate(p)
+}
+
+func validationToStandardResponse(err error) *StandardResponse {
+	code := "INVALID_ARG"
+	var ve *validation.ValidationError
+	if errors.As(err, &ve) {
+		code = ve.Code
+	}
+	return &StandardResponse{
+		Success: false,
+		Code:    code,
+		Message: err.Error(),
+		Data:    nil,
+	}
 }
 
 // upPre 预上传请求
@@ -805,12 +856,52 @@ func (qc *QuarkClient) upFinish(pre *PreUploadResponse) (*FinishResponse, error)
 // progressCallback: 进度回调函数，如果为 nil 则不显示进度
 // opts: 上传选项（可为 nil，使用默认行为）
 func (qc *QuarkClient) UploadFile(filePath, destPath string, progressCallback func(*UploadProgress), opts *UploadOptions) (*StandardResponse, error) {
-	// 解析选项，nil 安全
-	var policy UploadPolicy
-	if opts != nil {
-		policy = opts.Policy
+	params := map[string]interface{}{
+		"policy": "",
 	}
+	if opts != nil {
+		params["policy"] = string(opts.Policy)
+	}
+	validation.UploadOptionsDefaults.Apply(params)
+	policy := uploadPolicyFromParams(params)
+
 	filePath = stripQuotes(filePath)
+	if err := validation.NonEmpty().Validate(filePath); err != nil {
+		return &StandardResponse{
+			Success: false,
+			Code:    err.(*validation.ValidationError).Code,
+			Message: err.Error(),
+			Data:    nil,
+		}, nil
+	}
+	if destPath != "" {
+		if err := validation.NonEmpty().Validate(destPath); err != nil {
+			code := "INVALID_ARG"
+			if verr, ok := err.(*validation.ValidationError); ok {
+				code = verr.Code
+			}
+			return &StandardResponse{
+				Success: false,
+				Code:    code,
+				Message: err.Error(),
+				Data:    nil,
+			}, nil
+		}
+		cleaned, err := validation.ValidPathResult(destPath)
+		if err != nil {
+			code := "INVALID_ARG"
+			if verr, ok := err.(*validation.ValidationError); ok {
+				code = verr.Code
+			}
+			return &StandardResponse{
+				Success: false,
+				Code:    code,
+				Message: err.Error(),
+				Data:    nil,
+			}, nil
+		}
+		destPath = cleaned
+	}
 	file, err := os.Open(filePath)
 	if err != nil {
 		return &StandardResponse{
@@ -1500,6 +1591,12 @@ func (qc *QuarkClient) UploadFile(filePath, destPath string, progressCallback fu
 // CreateFolder 创建文件夹
 func (qc *QuarkClient) CreateFolder(folderName, pdirFid string) (*StandardResponse, error) {
 	folderName = stripQuotes(folderName)
+	if err := validation.NonEmpty().Validate(folderName); err != nil {
+		return validationToStandardResponse(err), nil
+	}
+	if err := validatePdirFidForCreateFolder(pdirFid); err != nil {
+		return validationToStandardResponse(err), nil
+	}
 	pdirFid = normalizeRootDir(pdirFid)
 
 	data := map[string]interface{}{
@@ -1558,6 +1655,14 @@ func (qc *QuarkClient) CreateFolder(folderName, pdirFid string) (*StandardRespon
 
 // Copy 复制文件或目录
 func (qc *QuarkClient) Copy(srcPath, destPath string) (*StandardResponse, error) {
+	if err := validateRemotePathOrFid(srcPath); err != nil {
+		return validationToStandardResponse(err), nil
+	}
+	if strings.TrimSpace(destPath) != "" {
+		if err := validateRemotePathOrFid(destPath); err != nil {
+			return validationToStandardResponse(err), nil
+		}
+	}
 	srcPath = normalizePath(srcPath)
 	destPath = normalizePath(destPath)
 
@@ -1751,6 +1856,12 @@ func (qc *QuarkClient) Copy(srcPath, destPath string) (*StandardResponse, error)
 // srcPath: 源路径（文件或目录）
 // destPath: 目标目录路径（目标目录路径，不是文件路径）
 func (qc *QuarkClient) Move(srcPath, destPath string) (*StandardResponse, error) {
+	if err := validateRemotePathOrFid(srcPath); err != nil {
+		return validationToStandardResponse(err), nil
+	}
+	if err := validateRemotePathOrFid(destPath); err != nil {
+		return validationToStandardResponse(err), nil
+	}
 	srcPath = normalizePath(srcPath)
 	destPath = normalizePath(destPath)
 
@@ -1893,8 +2004,17 @@ func (qc *QuarkClient) Move(srcPath, destPath string) (*StandardResponse, error)
 // oldPath: 原路径
 // newName: 新名称
 func (qc *QuarkClient) Rename(oldPath, newName string) (*StandardResponse, error) {
+	if err := validateRemotePathOrFid(oldPath); err != nil {
+		return validationToStandardResponse(err), nil
+	}
 	oldPath = normalizePath(oldPath)
 	newName = stripQuotes(newName)
+	if err := validation.NonEmpty().Validate(newName); err != nil {
+		return validationToStandardResponse(err), nil
+	}
+	if strings.ContainsAny(newName, `/\`) {
+		return validationToStandardResponse(validation.ErrInvalidArgument("名称不能包含路径分隔符")), nil
+	}
 
 	// 获取文件/目录信息
 	fileInfo, err := qc.GetFileInfo(oldPath)
@@ -1980,8 +2100,8 @@ func (qc *QuarkClient) Rename(oldPath, newName string) (*StandardResponse, error
 	}, nil
 }
 
-// listByFid 通过 FID 列出目录下的文件（内部方法，避免循环调用）
-// 支持分页，自动获取所有文件
+// listByFid 通过 FID 列出目录下的文件（内部方法，避免循环调用）。
+// 说明：此处会在内部按服务端分页循环拉取直至全量，与对外 API（如 List）暴露给调用方的分页参数无关。
 func (qc *QuarkClient) listByFid(pdirFid string, parentPath ...string) (*StandardResponse, error) {
 	// 确定父目录路径：如果提供了 parentPath，使用它；否则根据 pdirFid 判断
 	var basePath string
@@ -2173,6 +2293,9 @@ func (qc *QuarkClient) listByFid(pdirFid string, parentPath ...string) (*Standar
 // List 列出目录下的文件
 // dirPath: 目录路径（根目录使用 "/"）
 func (qc *QuarkClient) List(dirPath string) (*StandardResponse, error) {
+	if err := validateRemotePathOrFid(dirPath); err != nil {
+		return validationToStandardResponse(err), nil
+	}
 	dirPath = normalizePath(dirPath)
 	// 处理目录路径：根目录使用标准表示 "/"
 	var pdirFid string
@@ -2233,6 +2356,9 @@ func (qc *QuarkClient) List(dirPath string) (*StandardResponse, error) {
 
 // GetFileInfo 获取文件或目录信息
 func (qc *QuarkClient) GetFileInfo(remotePath string, skipPathConversion ...bool) (*StandardResponse, error) {
+	if err := validateRemotePathOrFid(remotePath); err != nil {
+		return validationToStandardResponse(err), nil
+	}
 	remotePath = normalizePath(remotePath)
 
 	if remotePath == "/" || remotePath == "" || remotePath == "." {
@@ -2444,6 +2570,9 @@ func (qc *QuarkClient) GetFileInfo(remotePath string, skipPathConversion ...bool
 
 // Delete 删除文件或目录
 func (qc *QuarkClient) Delete(remotePath string) (*StandardResponse, error) {
+	if err := validateRemotePathOrFid(remotePath); err != nil {
+		return validationToStandardResponse(err), nil
+	}
 	remotePath = normalizePath(remotePath)
 
 	// 获取文件信息以获取文件 ID
@@ -2571,6 +2700,9 @@ func (b *OSSCommitHeaderBuilder) BuildHeaders(req *http.Request, qc *QuarkClient
 // fid: 文件ID
 // 返回: 下载链接URL
 func (qc *QuarkClient) GetDownloadURL(fid string) (string, error) {
+	if err := validation.ValidFID().Validate(strings.TrimSpace(fid)); err != nil {
+		return "", err
+	}
 	data := map[string]interface{}{
 		"fids": []string{fid},
 	}
@@ -2675,12 +2807,25 @@ type DownloadProgress struct {
 // fid: 文件ID；destPath: 本地路径（文件或目录，为目录时使用 fileName 作为文件名）；fileName: 远程文件名（当 destPath 为目录时使用）
 // progressCallback: 进度回调，可为 nil
 func (qc *QuarkClient) DownloadFile(fid, destPath, fileName string, progressCallback func(*DownloadProgress)) error {
+	if err := validation.ValidFID().Validate(strings.TrimSpace(fid)); err != nil {
+		return err
+	}
 	downloadURL, err := qc.GetDownloadURL(fid)
 	if err != nil {
 		return err
 	}
 	// 若目标为目录或以分隔符结尾，则保存为 destPath/fileName
 	path := destPath
+	if path != "" && path != "." {
+		if err := validation.NonEmpty().Validate(path); err != nil {
+			return err
+		}
+		cleaned, err := validation.ValidPathResult(path)
+		if err != nil {
+			return err
+		}
+		path = cleaned
+	}
 	if path == "" || path == "." {
 		path = fileName
 	} else if info, err := os.Stat(path); err == nil && info.IsDir() {

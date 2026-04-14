@@ -2,21 +2,23 @@ package sdk
 
 import (
 	"bytes"
-	cryptorand "crypto/rand"
 	"encoding/json"
 	"fmt"
-	"math/big"
-	"math/rand"
 	"net/url"
 	"regexp"
 	"strings"
 	"time"
+
+	"kuake_sdk/sdk/validation"
 )
 
 // GetShareInfo 从文本中提取分享ID和提取码
 // text: 包含分享链接和/或提取码的文本
 // 返回分享信息和错误
 func (qc *QuarkClient) GetShareInfo(text string) (*ShareInfo, error) {
+	if err := validation.NonEmpty().Validate(text); err != nil {
+		return nil, err
+	}
 	// 提取pwd_id
 	// 匹配格式: /s/(\w+)(#/list/share.*/(\w+))?
 	re := regexp.MustCompile(`/s/(\w+)(#/list/share.*/(\w+))?`)
@@ -47,16 +49,21 @@ func (qc *QuarkClient) GetShareInfo(text string) (*ShareInfo, error) {
 // passcode: 提取码，默认空
 // 返回stoken数据和错误
 func (qc *QuarkClient) GetShareStoken(pwdID, passcode string) (map[string]interface{}, error) {
-	// 生成随机数和时间戳
-	rand.Seed(time.Now().UnixNano())
-	dt := rand.Intn(900) + 100 // 100-999
+	if err := validation.ValidFID().Validate(strings.TrimSpace(pwdID)); err != nil {
+		return nil, err
+	}
+	// 生成安全的随机数和时间戳
+	dtInt, err := validation.SecureRandomInt(100, 999)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate random value: %w", err)
+	}
 	t := time.Now().UnixMilli()
 
 	queryParams := url.Values{}
 	queryParams.Set("pr", "ucpro")
 	queryParams.Set("fr", "pc")
 	queryParams.Set("uc_param_str", "")
-	queryParams.Set("__dt", fmt.Sprintf("%d", dt))
+	queryParams.Set("__dt", fmt.Sprintf("%d", dtInt))
 	queryParams.Set("__t", fmt.Sprintf("%d", t))
 
 	data := map[string]interface{}{
@@ -99,17 +106,52 @@ func (qc *QuarkClient) GetShareStoken(pwdID, passcode string) (map[string]interf
 // sortOrder: 排序方式，"asc" 或 "desc"，默认"asc"
 // 返回分享列表数据和错误
 func (qc *QuarkClient) GetShareList(pwdID, stoken, pdirFid string, page, size int, sortBy, sortOrder string) (map[string]interface{}, error) {
-	// 验证排序字段
+	params := map[string]interface{}{
+		"page": page,
+		"size": size,
+	}
+	validation.PageDefaults.Apply(params)
+	page, _ = validation.SafeInt(params, "page")
+	size, _ = validation.SafeInt(params, "size")
+	if err := (validation.PaginateParams{Page: page, Size: size}).Validate(); err != nil {
+		return nil, err
+	}
+
+	// 验证排序字段与排序方向（与注释默认值一致）
+	sortBy = strings.TrimSpace(sortBy)
+	if sortBy == "" {
+		sortBy = "file_name"
+	}
 	if sortBy != "file_name" && sortBy != "updated_at" {
-		return nil, fmt.Errorf("sort_by 只能为 'file_name' 或 'updated_at'")
+		return nil, validation.ErrInvalidArgument("sort_by 只能为 'file_name' 或 'updated_at'")
+	}
+
+	sortOrder = strings.TrimSpace(sortOrder)
+	if sortOrder == "" {
+		sortOrder = "asc"
+	}
+	if sortOrder != "asc" && sortOrder != "desc" {
+		return nil, validation.ErrInvalidArgument("sort_order 只能为 'asc' 或 'desc'")
+	}
+
+	if err := validation.ValidFID().Validate(strings.TrimSpace(pwdID)); err != nil {
+		return nil, err
+	}
+	if err := validation.NonEmpty().Validate(strings.TrimSpace(stoken)); err != nil {
+		return nil, err
+	}
+	if err := validateSharePdirFid(pdirFid); err != nil {
+		return nil, err
 	}
 
 	// 构建排序字符串
 	sort := fmt.Sprintf("file_type:asc,%s:%s", sortBy, sortOrder)
 
-	// 生成随机数和时间戳
-	rand.Seed(time.Now().UnixNano())
-	dt := rand.Intn(900) + 100 // 100-999
+	// 生成安全的随机数和时间戳
+	dtInt, err := validation.SecureRandomInt(100, 999)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate random value: %w", err)
+	}
 	t := time.Now().UnixMilli()
 
 	queryParams := url.Values{}
@@ -126,7 +168,7 @@ func (qc *QuarkClient) GetShareList(pwdID, stoken, pdirFid string, page, size in
 	queryParams.Set("_fetch_share", "1")
 	queryParams.Set("_fetch_total", "1")
 	queryParams.Set("_sort", sort)
-	queryParams.Set("__dt", fmt.Sprintf("%d", dt))
+	queryParams.Set("__dt", fmt.Sprintf("%d", dtInt))
 	queryParams.Set("__t", fmt.Sprintf("%d", t))
 
 	reqURL := DRIVE_H_DOMAIN + SHARE_SHAREPAGE_DETAIL + "?" + queryParams.Encode()
@@ -156,16 +198,27 @@ func (qc *QuarkClient) GetShareList(pwdID, stoken, pdirFid string, page, size in
 // pdirSaveAll: 是否全部保存，默认true
 // 返回转存结果数据和错误
 func (qc *QuarkClient) SaveShareFile(pwdID, stoken string, fidList, shareTokenList []string, toPdirFid string, pdirSaveAll bool) (map[string]interface{}, error) {
-	// 生成随机数和时间戳
-	rand.Seed(time.Now().UnixNano())
-	dt := rand.Intn(900) + 100 // 100-999
+	if err := validation.NonEmpty().Validate(strings.TrimSpace(pwdID)); err != nil {
+		return nil, err
+	}
+	if err := validation.NonEmpty().Validate(strings.TrimSpace(stoken)); err != nil {
+		return nil, err
+	}
+	if err := validateSharePdirFid(toPdirFid); err != nil {
+		return nil, err
+	}
+	// 生成安全的随机数和时间戳
+	dtInt, err := validation.SecureRandomInt(100, 999)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate random value: %w", err)
+	}
 	t := time.Now().UnixMilli()
 
 	queryParams := url.Values{}
 	queryParams.Set("pr", "ucpro")
 	queryParams.Set("fr", "pc")
 	queryParams.Set("uc_param_str", "")
-	queryParams.Set("__dt", fmt.Sprintf("%d", dt))
+	queryParams.Set("__dt", fmt.Sprintf("%d", dtInt))
 	queryParams.Set("__t", fmt.Sprintf("%d", t))
 
 	data := map[string]interface{}{
@@ -209,6 +262,14 @@ func (qc *QuarkClient) SaveShareFile(pwdID, stoken string, fidList, shareTokenLi
 // needPasscode: 是否需要提取码，true表示需要（服务端自动生成），false表示不需要
 // 返回分享链接信息和错误
 func (qc *QuarkClient) CreateShare(filePath string, expireDays int, needPasscode bool) (*ShareLinkInfo, error) {
+	switch expireDays {
+	case 0, 1, 7, 30:
+	default:
+		return nil, validation.ErrInvalidArgument("expireDays 只能为 0、1、7 或 30")
+	}
+	if err := validateRemotePathOrFid(filePath); err != nil {
+		return nil, err
+	}
 	// 获取文件信息
 	fileInfo, err := qc.GetFileInfo(filePath)
 	if err != nil {
@@ -262,13 +323,6 @@ func (qc *QuarkClient) CreateShare(filePath string, expireDays int, needPasscode
 	case 30:
 		// 30天
 		data["expired_type"] = 4
-	default:
-		// 其他天数，根据范围选择
-		if expireDays <= 7 {
-			data["expired_type"] = 3 // 7天
-		} else {
-			data["expired_type"] = 4 // 30天
-		}
 	}
 	// 如果需要提取码，生成一个4位随机提取码
 	// 注意：只有当url_type=2时才需要传递passcode参数
@@ -433,6 +487,9 @@ func (qc *QuarkClient) waitForTaskComplete(taskID string) (string, error) {
 // shareID: 分享ID（从CreateShare返回）
 // 返回分享链接信息和错误
 func (qc *QuarkClient) GetShareLink(shareID string) (*ShareLinkInfo, error) {
+	if err := validation.ValidFID().Validate(strings.TrimSpace(shareID)); err != nil {
+		return nil, err
+	}
 	data := map[string]interface{}{
 		"share_id": shareID,
 	}
@@ -493,6 +550,12 @@ func (qc *QuarkClient) GetShareLink(shareID string) (*ShareLinkInfo, error) {
 // passcode: 提取码
 // 返回错误
 func (qc *QuarkClient) SetSharePassword(pwdID, passcode string) error {
+	if err := validation.NonEmpty().Validate(strings.TrimSpace(pwdID)); err != nil {
+		return err
+	}
+	if err := validation.NonEmpty().Validate(strings.TrimSpace(passcode)); err != nil {
+		return err
+	}
 	data := map[string]interface{}{
 		"pwd_id":   pwdID,
 		"passcode": passcode,
@@ -531,17 +594,32 @@ func (qc *QuarkClient) SetSharePassword(pwdID, passcode string) error {
 // orderType: 排序方式，"asc" 或 "desc"，默认"desc"
 // 返回分享列表数据和错误
 func (qc *QuarkClient) GetMyShareList(page, size int, orderField, orderType string) (map[string]interface{}, error) {
-	if page <= 0 {
-		page = 1
+	params := map[string]interface{}{
+		"page":        page,
+		"size":        size,
+		"order_field": orderField,
+		"order_type":  orderType,
 	}
-	if size <= 0 {
-		size = 50
+	validation.PageDefaults.Apply(params)
+
+	page, _ = validation.SafeInt(params, "page")
+	size, _ = validation.SafeInt(params, "size")
+	orderField, _ = validation.SafeString(params, "order_field")
+	orderType, _ = validation.SafeString(params, "order_type")
+
+	pagination := validation.PaginateParams{Page: page, Size: size}
+	if err := pagination.Validate(); err != nil {
+		return nil, err
 	}
-	if orderField == "" {
-		orderField = "created_at"
+
+	allowedOrderField := map[string]struct{}{
+		"created_at": {}, "updated_at": {}, "file_name": {}, "size": {},
 	}
-	if orderType == "" {
-		orderType = "desc"
+	if _, ok := allowedOrderField[orderField]; !ok {
+		return nil, validation.ErrInvalidArgument("order_field 只能为 created_at、updated_at、file_name 或 size")
+	}
+	if orderType != "asc" && orderType != "desc" {
+		return nil, validation.ErrInvalidArgument("order_type 只能为 asc 或 desc")
 	}
 
 	queryParams := url.Values{}
@@ -582,6 +660,9 @@ func (qc *QuarkClient) GetMyShareList(page, size int, orderField, orderType stri
 // fid: 文件ID
 // 返回share_id和错误
 func (qc *QuarkClient) GetShareIDByFid(fid string) (string, error) {
+	if err := validation.ValidFID().Validate(strings.TrimSpace(fid)); err != nil {
+		return "", err
+	}
 	// 获取我的分享列表，查找匹配的fid
 	// 可能需要遍历多页，先尝试第一页
 	shareList, err := qc.GetMyShareList(1, 50, "created_at", "desc")
@@ -626,7 +707,12 @@ func (qc *QuarkClient) GetShareIDByFid(fid string) (string, error) {
 // 返回错误
 func (qc *QuarkClient) DeleteShare(shareIDs []string) error {
 	if len(shareIDs) == 0 {
-		return fmt.Errorf("share_ids cannot be empty")
+		return validation.ErrInvalidArgument("share_ids 不能为空")
+	}
+	for _, id := range shareIDs {
+		if err := validation.ValidFID().Validate(strings.TrimSpace(id)); err != nil {
+			return err
+		}
 	}
 
 	queryParams := url.Values{}
@@ -667,25 +753,32 @@ func (qc *QuarkClient) DeleteShare(shareIDs []string) error {
 	return nil
 }
 
+// validateSharePdirFid 校验分享列表/转存中的父目录 fid："0" 表示根目录，否则须为合法 fid。
+func validateSharePdirFid(s string) error {
+	s = strings.TrimSpace(s)
+	if s == "0" {
+		return nil
+	}
+	return validation.ValidFID().Validate(s)
+}
+
 // generateSecurePasscode 生成加密安全的随机提取码
 // length: 提取码长度
 // 返回: 随机提取码字符串和错误
 // 使用 crypto/rand 确保提取码不可预测，防止安全漏洞
 func generateSecurePasscode(length int) (string, error) {
 	const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-	charsLen := big.NewInt(int64(len(chars)))
-	
+
 	var code strings.Builder
 	code.Grow(length)
-	
+
 	for i := 0; i < length; i++ {
-		// 使用 crypto/rand 生成加密安全的随机数
-		n, err := cryptorand.Int(cryptorand.Reader, charsLen)
+		randomIndex, err := validation.SecureRandomInt(0, len(chars)-1)
 		if err != nil {
 			return "", fmt.Errorf("failed to generate random number: %w", err)
 		}
-		code.WriteByte(chars[n.Int64()])
+		code.WriteByte(chars[randomIndex])
 	}
-	
+
 	return code.String(), nil
 }

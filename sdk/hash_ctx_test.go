@@ -114,29 +114,30 @@ func TestEncodeHashCtx_Nil(t *testing.T) {
 }
 
 func TestUpdateHashCtxFromHash(t *testing.T) {
+	// Nl 为「已处理总比特数」的低 32 位（见 updateHashCtxFromHash：totalBytesProcessed*8 再拆 Nl/Nh），不是字节数。
 	tests := []struct {
-		name      string
-		chunkData []byte
+		name       string
+		chunkData  []byte
 		totalBytes int64
-		wantNl    int64
+		wantNl     int64 // 与 HashCtx.Nl 十进制字符串一致，等于总比特数的低 32 位
 	}{
 		{
 			name:       "first chunk",
 			chunkData:  []byte("test chunk data"),
 			totalBytes: 0,
-			wantNl:     15, // len("test chunk data")
+			wantNl:     15 * 8, // 15 字节 → 120 bit
 		},
 		{
 			name:       "second chunk",
 			chunkData:  []byte("more data"),
 			totalBytes: 15,
-			wantNl:     24, // 15 + 9 (len("more data") = 9, not 10)
+			wantNl:     24 * 8, // 15+9 字节 → 192 bit
 		},
 		{
 			name:       "large chunk",
 			chunkData:  make([]byte, 4194304), // 4MB
 			totalBytes: 0,
-			wantNl:     4194304,
+			wantNl:     4194304 * 8, // 33554432 bit，Nh 仍为 0
 		},
 	}
 
@@ -245,8 +246,8 @@ func TestUpdateHashCtxFromHash_Incremental(t *testing.T) {
 		totalBytes += int64(len(chunk))
 	}
 
-	// 验证每个上下文的 Nl 值是否正确递增
-	expectedNl := []int64{6, 12, 18} // len("chunk1")=6, +6=12, +6=18
+	// 每个分片输出的是「截至该分片累计已处理」的比特长度低 32 位（与 OSS HashCtx 一致）
+	expectedNl := []int64{6 * 8, 12 * 8, 18 * 8} // 6/12/18 字节 → 48/96/144 bit
 	for i, ctx := range contexts {
 		var gotNl int64
 		fmt.Sscanf(ctx.Nl, "%d", &gotNl)
@@ -255,9 +256,10 @@ func TestUpdateHashCtxFromHash_Incremental(t *testing.T) {
 		}
 	}
 
-	// 验证后续分片的哈希值应该不同（因为累积了更多数据）
-	if contexts[0].H0 == contexts[1].H0 && contexts[1].H0 == contexts[2].H0 {
-		t.Error("Hash values should be different for different chunks")
+	// 注意：累计长度小于 64 字节（一个 SHA1 块）时，MarshalBinary 里 h0–h4 往往仍为初始 IV，
+	// 不能用 H0 比较分片；Nl/Nh 来自状态末尾的比特计数，会随分片递增（已在上方校验）。
+	if contexts[0].Nl == contexts[1].Nl || contexts[1].Nl == contexts[2].Nl {
+		t.Error("Nl should differ for each incremental chunk")
 	}
 }
 

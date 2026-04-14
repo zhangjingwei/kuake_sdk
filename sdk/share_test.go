@@ -1,8 +1,71 @@
 package sdk
 
 import (
+	"errors"
 	"testing"
+
+	"kuake_sdk/sdk/validation"
 )
+
+func TestGetMyShareList_InvalidPage_ReturnsValidationError(t *testing.T) {
+	qc := &QuarkClient{}
+	_, err := qc.GetMyShareList(1001, 50, "created_at", "desc")
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+	var ve *validation.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("want *validation.ValidationError, got %T: %v", err, err)
+	}
+	if ve.Code != "INVALID_ARG" {
+		t.Errorf("Code = %q, want INVALID_ARG", ve.Code)
+	}
+}
+
+func TestGetShareList_InvalidPage_ReturnsValidationError(t *testing.T) {
+	qc := &QuarkClient{}
+	_, err := qc.GetShareList("p", "s", "0", 1001, 50, "file_name", "asc")
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+	var ve *validation.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("want *validation.ValidationError, got %T: %v", err, err)
+	}
+	if ve.Code != "INVALID_ARG" {
+		t.Errorf("Code = %q, want INVALID_ARG", ve.Code)
+	}
+}
+
+func TestGetShareList_InvalidSortBy_ReturnsValidationError(t *testing.T) {
+	qc := &QuarkClient{}
+	_, err := qc.GetShareList("p", "s", "0", 1, 50, "invalid_sort_field", "asc")
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+	var ve *validation.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("want *validation.ValidationError, got %T: %v", err, err)
+	}
+	if ve.Code != "INVALID_ARG" {
+		t.Errorf("Code = %q, want INVALID_ARG", ve.Code)
+	}
+}
+
+func TestGetShareList_InvalidSortOrder_ReturnsValidationError(t *testing.T) {
+	qc := &QuarkClient{}
+	_, err := qc.GetShareList("p", "s", "0", 1, 50, "file_name", "invalid_order")
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+	var ve *validation.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("want *validation.ValidationError, got %T: %v", err, err)
+	}
+	if ve.Code != "INVALID_ARG" {
+		t.Errorf("Code = %q, want INVALID_ARG", ve.Code)
+	}
+}
 
 func TestGetShareInfo(t *testing.T) {
 	t.Skip("Skipping test that requires network access. Use integration tests instead.")
@@ -199,7 +262,7 @@ func TestGetShareList(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := client.GetShareList(tt.pwdID, tt.stoken, tt.pdirFid, tt.page, tt.size, "file_type", "0")
+			result, err := client.GetShareList(tt.pwdID, tt.stoken, tt.pdirFid, tt.page, tt.size, "file_name", "asc")
 			if (err != nil) != tt.wantErr {
 				t.Errorf("GetShareList() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -286,6 +349,86 @@ func TestSetSharePassword(t *testing.T) {
 				t.Errorf("SetSharePassword() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
+	}
+}
+
+func TestGetShareInfo_EmptyText_ReturnsValidationError(t *testing.T) {
+	qc := &QuarkClient{}
+	_, err := qc.GetShareInfo("   ")
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+	var ve *validation.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("want *validation.ValidationError, got %T", err)
+	}
+}
+
+func TestGetShareStoken_InvalidPwdID_ReturnsValidationError(t *testing.T) {
+	qc := &QuarkClient{}
+	_, err := qc.GetShareStoken("not@valid", "")
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+}
+
+func TestGetShareList_EmptyStoken_ReturnsValidationError(t *testing.T) {
+	qc := &QuarkClient{}
+	_, err := qc.GetShareList("validpwd012", "   ", "0", 1, 50, "file_name", "asc")
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+}
+
+func TestCreateShare_InvalidExpireDays_ReturnsValidationError(t *testing.T) {
+	qc := &QuarkClient{}
+	_, err := qc.CreateShare("/foo", 99, false)
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+	var ve *validation.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("want *validation.ValidationError, got %T: %v", err, err)
+	}
+}
+
+func TestGetShareLink_InvalidShareID_ReturnsValidationError(t *testing.T) {
+	qc := &QuarkClient{}
+	_, err := qc.GetShareLink("bad/id")
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+}
+
+func TestSetSharePassword_EmptyPasscode_ReturnsValidationError(t *testing.T) {
+	qc := &QuarkClient{}
+	err := qc.SetSharePassword("pwd012345678", "  ")
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+}
+
+func TestGetMyShareList_InvalidOrderField_ReturnsValidationError(t *testing.T) {
+	qc := &QuarkClient{}
+	_, err := qc.GetMyShareList(1, 50, "not_a_field", "desc")
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+}
+
+func TestGetShareIDByFid_InvalidFid_ReturnsValidationError(t *testing.T) {
+	qc := &QuarkClient{}
+	_, err := qc.GetShareIDByFid("bad/fid")
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+}
+
+func TestDeleteShare_InvalidShareID_ReturnsValidationError(t *testing.T) {
+	qc := &QuarkClient{}
+	err := qc.DeleteShare([]string{"validfid00", "bad/id"})
+	if err == nil {
+		t.Fatal("expected validation error")
 	}
 }
 

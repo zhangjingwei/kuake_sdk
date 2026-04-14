@@ -7,7 +7,7 @@ import (
 
 // GetUserInfo 获取用户信息（含容量）
 // 先调用 /account/info 获取昵称头像，再调用 /1/clouddrive/member 获取容量和会员信息，
-// 两者合并后返回。
+// 两者合并后返回。无外部输入参数，不进行入参校验。
 func (qc *QuarkClient) GetUserInfo() (*StandardResponse, error) {
 	// 构建完整 URL（使用 PAN_DOMAIN，不是 baseURL）
 	reqURL := PAN_DOMAIN + USER_INFO
