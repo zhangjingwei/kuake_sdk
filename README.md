@@ -109,7 +109,7 @@ go get github.com/zhangjingwei/kuake_cli@latest
 
 ## Star History
 
-[Star History Chart](https://star-history.com/#zhangjingwei/kuake_cli&Date)
+[![Star History Chart](https://api.star-history.com/chart?repos=zhangjingwei/kuake_cli&type=date&legend=top-left)](https://www.star-history.com/?type=date&repos=zhangjingwei%2Fkuake_cli)
 
 ## 贡献者
 
