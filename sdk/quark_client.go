@@ -192,7 +192,7 @@ func (qc *QuarkClient) switchToNextToken() error {
 
 // checkAuth 检查用户登录状态
 // 如果缓存有效则直接返回，否则调用 GetUserInfo 检查
-// 如果认证失败，自动切换到下一个 token
+// 若认证失败且配置了多个 token：在非上传流程中自动切换到下一个 token；上传进行中（activeUploads>0）不切换，直接返回错误
 func (qc *QuarkClient) checkAuth() error {
 	qc.authCheckMutex.RLock()
 	// 检查缓存是否有效
@@ -221,6 +221,11 @@ func (qc *QuarkClient) checkAuth() error {
 	// 检查 StandardResponse 的 Success 字段
 	if !userInfoResp.Success {
 		qc.authCheckValid = false
+
+		// 上传会话期间禁止自动换 token，避免并行分片与其它路径并发读写 cookies
+		if qc.activeUploads.Load() > 0 {
+			return fmt.Errorf("authentication failed")
+		}
 
 		// 如果有多个 token，尝试切换到下一个
 		if len(qc.accessTokens) > 1 {

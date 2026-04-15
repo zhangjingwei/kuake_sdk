@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -30,6 +31,7 @@ type QuarkClient struct {
 	authCheckTimeout  time.Duration // 认证检查缓存时间（默认5分钟）
 	failedTokens      map[int]bool  // 记录已失败的 token 索引
 	failedTokensMutex sync.RWMutex  // 失败 token 记录的锁
+	activeUploads     atomic.Int32  // 上传进行期间 >0：禁止自动切换 token（避免与并行分片并发读写 cookies）
 	Debug             bool          // 调试开关，控制是否输出调试信息
 }
 

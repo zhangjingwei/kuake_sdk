@@ -5,7 +5,6 @@ import (
 	"context"
 	"crypto/md5"
 	"crypto/sha1"
-	"crypto/tls"
 	"encoding"
 	"encoding/base64"
 	"encoding/binary"
@@ -19,7 +18,9 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -923,6 +924,10 @@ func (qc *QuarkClient) UploadFile(filePath, destPath string, progressCallback fu
 		}, nil
 	}
 
+	// 自此刻起至本函数返回，禁止 checkAuth 自动切换 token（多 token 与并行分片并发安全）
+	qc.activeUploads.Add(1)
+	defer qc.activeUploads.Add(-1)
+
 	fileSize := fileInfo.Size()
 	localFileName := fileInfo.Name()
 
@@ -931,11 +936,12 @@ func (qc *QuarkClient) UploadFile(filePath, destPath string, progressCallback fu
 
 	destPath = normalizePath(destPath)
 	var destFileName string
-	if strings.HasSuffix(destPath, "/") || filepath.Base(destPath) == "" || filepath.Base(destPath) == "." {
+	// 远程目标路径为 POSIX；Windows 上须用 path.Base，与 GetFileInfo 一致
+	if strings.HasSuffix(destPath, "/") || path.Base(destPath) == "" || path.Base(destPath) == "." {
 		destPath = strings.TrimSuffix(destPath, "/") + "/" + localFileName
 		destFileName = localFileName
 	} else {
-		destFileName = filepath.Base(destPath)
+		destFileName = path.Base(destPath)
 	}
 
 	destDirPath := destPath
@@ -2119,9 +2125,18 @@ func (qc *QuarkClient) listByFid(pdirFid string, parentPath ...string) (*Standar
 	page := 1
 	pageSize := 50 // 每页大小
 	hasMore := true
+	const maxListPages = 10000
 
 	// 循环获取所有数据
 	for hasMore {
+		if page > maxListPages {
+			return &StandardResponse{
+				Success: false,
+				Code:    "LIST_PAGE_LIMIT",
+				Message: fmt.Sprintf("list directory exceeded page limit (%d)", maxListPages),
+				Data:    nil,
+			}, nil
+		}
 		// 构建查询参数
 		params := url.Values{}
 		params.Set("uc_param_str", "")
@@ -2194,16 +2209,18 @@ func (qc *QuarkClient) listByFid(pdirFid string, parentPath ...string) (*Standar
 				// 映射 fid (文件ID)
 				if fid, ok := itemMap["fid"].(string); ok {
 					fileInfo.Fid = fid
+				} else if f, ok := itemMap["fid"].(float64); ok {
+					fileInfo.Fid = fmt.Sprintf("%.0f", f)
 				}
 
 				// 映射 file_name (文件名)
 				if name, ok := itemMap["file_name"].(string); ok {
 					fileInfo.Name = name
-					// 构建文件路径：根据父目录路径和文件名
+					// 构建文件路径：网盘路径为 POSIX，使用 path.Join，避免 Windows 下 filepath 产生反斜杠
 					if basePath == "/" {
 						fileInfo.Path = "/" + name
 					} else if basePath != "" {
-						fileInfo.Path = normalizePath(filepath.Join(basePath, name))
+						fileInfo.Path = normalizePath(path.Join(basePath, name))
 					} else {
 						fileInfo.Path = "" // 无法确定路径
 					}
@@ -2264,20 +2281,13 @@ func (qc *QuarkClient) listByFid(pdirFid string, parentPath ...string) (*Standar
 			}
 		}
 
-		// 检查是否还有更多数据
-		// 如果返回的数据量少于 pageSize，说明已经获取了所有数据
+		// 检查是否还有更多数据：短页表示已无后续页。
+		// 不可单独依赖 data["total"] 结束翻页：服务端 total 可能与实际条数不一致，会导致提前停止、
+		// GetFileInfo 等在父目录全量列表中按名匹配时漏项（表现为目录已存在却 FILE_NOT_FOUND）。
 		if len(listData) < pageSize {
 			hasMore = false
 		} else {
-			// 检查响应中是否有 total 字段来判断是否还有更多数据
-			if total, ok := data["total"].(float64); ok {
-				currentCount := float64(len(allFileList))
-				hasMore = currentCount < total
-			} else {
-				// 如果没有 total 字段，根据返回的数据量判断
-				// 如果返回的数据量等于 pageSize，可能还有更多数据
-				hasMore = len(listData) == pageSize
-			}
+			hasMore = true
 			page++
 		}
 	}
@@ -2377,7 +2387,8 @@ func (qc *QuarkClient) GetFileInfo(remotePath string, skipPathConversion ...bool
 		}, nil
 	}
 
-	fileName := filepath.Base(remotePath)
+	// 远程路径始终为 POSIX 斜杠；Windows 上 filepath.Base 不会按 / 分割，必须用 path.Base
+	fileName := path.Base(remotePath)
 	if fileName == "." || fileName == "/" {
 		parts := strings.Split(strings.Trim(remotePath, "/"), "/")
 		if len(parts) > 0 && parts[len(parts)-1] != "" {
@@ -2497,7 +2508,7 @@ func (qc *QuarkClient) GetFileInfo(remotePath string, skipPathConversion ...bool
 						if parentPathForList == "/" {
 							fileInfo.Path = "/" + name
 						} else if parentPathForList != "" {
-							fileInfo.Path = normalizePath(filepath.Join(parentPathForList, name))
+							fileInfo.Path = normalizePath(path.Join(parentPathForList, name))
 						} else {
 							fileInfo.Path = ""
 						}
@@ -2803,6 +2814,80 @@ type DownloadProgress struct {
 	Total      int64 // 总字节数，-1 表示未知
 }
 
+// downloadURLForDebugLog 仅用于调试输出：保留 scheme/host/path 与 query 参数名，不输出签名与 token。
+func downloadURLForDebugLog(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return fmt.Sprintf("[invalid URL: %v]", err)
+	}
+	keys := make([]string, 0, len(u.Query()))
+	for k := range u.Query() {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return fmt.Sprintf("%s://%s%s ?keys=%v", u.Scheme, u.Host, u.Path, keys)
+}
+
+func summarizeCookieHeaderForDebug(cookieHeader string) string {
+	parts := strings.Split(cookieHeader, ";")
+	names := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if i := strings.IndexByte(p, '='); i > 0 {
+			names = append(names, p[:i])
+		}
+	}
+	sort.Strings(names)
+	return fmt.Sprintf("len=%d names=%v", len(cookieHeader), names)
+}
+
+// warnDownloadCookieIncomplete 在调试模式下提示：仅 __pus 时 OSS 回调鉴权常会 auth miss（需与网页一致的完整 Cookie）。
+func (qc *QuarkClient) warnDownloadCookieIncomplete() {
+	if !qc.Debug {
+		return
+	}
+	if len(qc.cookies) != 1 {
+		return
+	}
+	if _, ok := qc.cookies["__pus"]; !ok {
+		return
+	}
+	fmt.Fprintf(os.Stderr, "[调试][DownloadFile] 提示: 当前配置仅含 __pus；带 callback 的下载 URL 会校验完整 Cookie。请从浏览器 pan.quark.cn 复制「整段」Cookie 写入 config 的 access_tokens（需含 _UP_*、tfstk、__puus 等），勿只保留 __pus。\n")
+}
+
+func (qc *QuarkClient) debugLogDownloadRequest(req *http.Request) {
+	if !qc.Debug {
+		return
+	}
+	fmt.Fprintf(os.Stderr, "[调试][DownloadFile] %s %s\n", req.Method, downloadURLForDebugLog(req.URL.String()))
+	for k, vv := range req.Header {
+		for _, v := range vv {
+			if strings.EqualFold(k, "Cookie") {
+				fmt.Fprintf(os.Stderr, "[调试][DownloadFile]   %s: %s\n", k, summarizeCookieHeaderForDebug(v))
+			} else {
+				fmt.Fprintf(os.Stderr, "[调试][DownloadFile]   %s: %s\n", k, v)
+			}
+		}
+	}
+}
+
+func (qc *QuarkClient) debugLogDownloadResponse(resp *http.Response) {
+	if !qc.Debug || resp == nil {
+		return
+	}
+	fmt.Fprintf(os.Stderr, "[调试][DownloadFile] 响应: proto=%s status=%d\n", resp.Proto, resp.StatusCode)
+	keys := make([]string, 0, len(resp.Header))
+	for k := range resp.Header {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		for _, v := range resp.Header.Values(k) {
+			fmt.Fprintf(os.Stderr, "[调试][DownloadFile]   %s: %s\n", k, v)
+		}
+	}
+}
+
 // DownloadFile 将文件下载到本地
 // fid: 文件ID；destPath: 本地路径（文件或目录，为目录时使用 fileName 作为文件名）；fileName: 远程文件名（当 destPath 为目录时使用）
 // progressCallback: 进度回调，可为 nil
@@ -2851,20 +2936,50 @@ func (qc *QuarkClient) DownloadFile(fid, destPath, fileName string, progressCall
 	if err != nil {
 		return fmt.Errorf("create request: %w", err)
 	}
-	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36")
-	cookieParts := make([]string, 0, len(qc.cookies))
-	for k, v := range qc.cookies {
-		cookieParts = append(cookieParts, fmt.Sprintf("%s=%s", k, v))
+	if qc.Debug {
+		if rebuilt := req.URL.String(); rebuilt != downloadURL {
+			fmt.Fprintf(os.Stderr, "[调试][DownloadFile] 警告: http.NewRequest 解析后的 URL 与 API 原始 download_url 字节不一致（可能影响 OSS 签名）。apiLen=%d parsedLen=%d\n", len(downloadURL), len(rebuilt))
+		} else {
+			fmt.Fprintf(os.Stderr, "[调试][DownloadFile] URL 与 API 返回的 download_url 一致（未在客户端拼接或改写 query）\n")
+		}
+	}
+	// 与当前 Chrome 网盘页对齐；OSS 回调会校验 Referer/Cookie 等，与主 API 客户端（强制 HTTP/1.1）分离以免边缘策略差异。
+	const downloadChromeUA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36"
+	req.Header.Set("User-Agent", downloadChromeUA)
+	req.Header.Set("Referer", PAN_DOMAIN+"/")
+	req.Header.Set("Accept", "*/*")
+	req.Header.Set("Accept-Language", "zh-CN,zh;q=0.9")
+	req.Header.Set("Cache-Control", "no-cache")
+	req.Header.Set("Pragma", "no-cache")
+	req.Header.Set("Priority", "u=0, i")
+	req.Header.Set("Sec-Ch-Ua", `"Chromium";v="146", "Google Chrome";v="146", "Not_A Brand";v="24"`)
+	req.Header.Set("Sec-Ch-Ua-Mobile", "?0")
+	req.Header.Set("Sec-Ch-Ua-Platform", `"Windows"`)
+	req.Header.Set("Sec-Fetch-Site", "same-site")
+	req.Header.Set("Sec-Fetch-Mode", "navigate")
+	req.Header.Set("Sec-Fetch-Dest", "iframe")
+	req.Header.Set("Sec-Fetch-User", "?1")
+	req.Header.Set("Upgrade-Insecure-Requests", "1")
+	keys := make([]string, 0, len(qc.cookies))
+	for k := range qc.cookies {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	cookieParts := make([]string, 0, len(keys))
+	for _, k := range keys {
+		cookieParts = append(cookieParts, fmt.Sprintf("%s=%s", k, qc.cookies[k]))
 	}
 	if len(cookieParts) > 0 {
 		req.Header.Set("Cookie", strings.Join(cookieParts, "; "))
 	}
+	qc.warnDownloadCookieIncomplete()
+	qc.debugLogDownloadRequest(req)
 
 	client := &http.Client{
 		Timeout: 2 * time.Hour,
+		// 下载走 CDN/OSS，与 Chrome 一致启用 HTTP/2（勿复用主客户端里禁用 h2 的 Transport）
 		Transport: &http.Transport{
-			// 禁用 HTTP/2，与主客户端保持一致
-			TLSNextProto: make(map[string]func(authority string, c *tls.Conn) http.RoundTripper),
+			ForceAttemptHTTP2: true,
 		},
 	}
 	resp, err := client.Do(req)
@@ -2872,9 +2987,14 @@ func (qc *QuarkClient) DownloadFile(fid, destPath, fileName string, progressCall
 		return fmt.Errorf("download request: %w", err)
 	}
 	defer resp.Body.Close()
+	qc.debugLogDownloadResponse(resp)
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("download failed: status %d, body: %s", resp.StatusCode, string(body))
+		errStr := fmt.Sprintf("download failed: status %d, body: %s", resp.StatusCode, string(body))
+		if resp.StatusCode == http.StatusForbidden && !qc.Debug {
+			errStr += "\n提示: 设置环境变量 KUake_DEBUG=1 可输出脱敏调试信息（URL 仅列 query 键名，Cookie 仅列名称，含响应头）。"
+		}
+		return fmt.Errorf("%s", errStr)
 	}
 	var total int64 = -1
 	if resp.ContentLength >= 0 {

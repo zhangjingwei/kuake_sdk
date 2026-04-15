@@ -11,7 +11,7 @@ $ErrorActionPreference = "Stop"
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $ProjectRoot = Split-Path -Parent $ScriptDir
 $DistDir = Join-Path $ProjectRoot "dist"
-$ExeFile = Join-Path $DistDir "kuake-v1.4.0-windows-amd64.exe"
+$ExeFile = Join-Path $DistDir "kuake-v1.4.2-windows-amd64.exe"
 $BinDir = Join-Path $env:USERPROFILE "bin"
 $TargetExe = Join-Path $BinDir "kuake.exe"
 

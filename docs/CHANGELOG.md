@@ -1,5 +1,15 @@
 # 变更日志
 
+## v1.4.2
+
+- **SDK 路径与列表**
+  - 修复 `listByFid` 翻页：仅以本页条数是否满页决定是否继续，避免依赖不可靠的 `total` 导致列表缺项
+  - Windows 下远程路径统一按 POSIX 处理：`GetFileInfo` / `UploadFile` 使用 `path.Base` 解析远端路径；`GetFileInfo` 列表回退分支使用 `path.Join` 拼接子路径
+  - `listByFid` 兼容 JSON 将 `fid` 解析为 `float64` 的情况
+- **测试与记录**
+  - 新增可选端到端回归 `TestE2E_Regression_CoreFlow`（`E2E_REGRESSION=1` 或 `INTEGRATION_TEST=1`，配置见 `KUAKE_E2E_CONFIG`）
+  - 问题与回归说明见仓库根目录 `buglist.txt`
+
 ## v1.4.1
 
 - 新增主规格架构文档：`specs/architecture/spec.md`
