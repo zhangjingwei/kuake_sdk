@@ -51,7 +51,7 @@ kuake [options] <command> [arguments...]
 | `KUAKE_PUS` | `kuake`（cmd） | `__pus` 的**值**（不要写 `__pus=` 前缀） | 仅当 `KUAKE_COOKIE` 规范化后为空时使用；可与 `KUAKE_PUUS` 组合 |
 | `KUAKE_PUUS` | `kuake`（cmd） | `__puus` 的**值**（不要写 `__puus=` 前缀） | 同上；可单独使用（仅 `__puus`）或仅 `KUAKE_PUS` 或两者一起 |
 | `-cookies` / `--cookies` | `kuake`（cmd） | 同上 | 当 `KUAKE_COOKIE` 为空时使用；仍会通过 CLI 做与 env 相同的规范化（`__pus=`、分号） |
-| `KUAKE_UPLOAD_PARALLEL` | `kuake`（cmd，`upload`） | 上传并行度 1–16 | 未传 `--max_upload_parallel` 时读取；**命令行 flag 优先于本变量** |
+| `KUAKE_UPLOAD_PARALLEL` | `kuake`（cmd，`upload`）与 SDK（`UploadFile`） | 上传并行 worker 数 1–16 | CLI：未传 `--max_upload_parallel` 时从本变量读取并 `Setenv`；**SDK：上传时若本变量合法则覆盖服务端 `part_thread`**，且不超过分片总数与 16；**命令行 flag 优先于**仅由 shell `export` 的值 |
 | `KUake_DEBUG` | SDK（`QuarkClient`） | 调试输出 | 设为 `1` 开启；变量名大小写以代码为准 |
 | `E2E_REGRESSION` / `INTEGRATION_TEST` | `go test ./sdk` | 启用端到端回归 `TestE2E_Regression_CoreFlow` | 置 `1` 后须同时提供 **`KUAKE_COOKIE` 或 `KUAKE_PUS`+`KUAKE_PUUS`**；测试会尝试加载 cwd 与 `../.env`；**不再**读取 `config.json` / `KUAKE_E2E_CONFIG`；非 `kuake` 二进制行为 |
 
@@ -88,10 +88,10 @@ kuake [options] <command> [arguments...]
   - `dest_dir`: 目标目录（可选，默认 `"/"`），可以是路径或 FID
   - 默认会转存分享中的所有文件到指定目录
 - **并行上传参数**：
-  - `--max_upload_parallel N`：设置并行上传的分片数量（1-16，默认 4）；**传入本 flag 时优先于**环境变量 `KUAKE_UPLOAD_PARALLEL`
-  - 未传 `--max_upload_parallel` 时，可读取环境变量 `KUAKE_UPLOAD_PARALLEL`（合法值 1–16）
-  - 并行上传仅在满足条件时启用（新上传、多分片文件等）
-  - 断点续传时自动使用顺序上传，确保兼容性
+  - `--max_upload_parallel N`：设置上传并行 worker 数（1–16）；**传入本 flag 时优先于**环境变量 `KUAKE_UPLOAD_PARALLEL`（CLI 会写入进程环境供 SDK 读取）
+  - 未传 `--max_upload_parallel` 时，可由环境变量 `KUAKE_UPLOAD_PARALLEL`（1–16）控制；**均未设置时由服务端预上传返回的 `part_thread` 决定**（常见约 3）
+  - 实际上传 worker 数还会受 **分片总数** 上限约束（不超过 `ceil(文件大小 / part_size)`）
+  - 并行上传仅在多分片且最终并行度大于 1 时启用；断点续传在相同条件下仍可走并行路径
 - **管道模式**：
   - `list` 命令使用 `--stream` 选项输出流式 JSON（每行一个文件对象）
   - `delete`、`info`、`download` 命令支持从 stdin 读取 JSON 输入
@@ -257,7 +257,7 @@ export KUAKE_UPLOAD_PARALLEL=8
   - 所有操作都通过夸克网盘 API 进行
   - 需要有效的 Cookie（access_token）才能使用
   - 上传操作支持进度显示（输出到 stderr）
-  - 上传并行度：未传 `--max_upload_parallel` 时可使用 `KUAKE_UPLOAD_PARALLEL`（1–16）；**传入 `--max_upload_parallel` 时覆盖环境变量**；默认 4
+  - 上传并行度：未传 `--max_upload_parallel` 时可使用 `KUAKE_UPLOAD_PARALLEL`（1–16），由 SDK 读取并覆盖服务端 `part_thread`（且不超过分片总数）；**传入 `--max_upload_parallel` 时覆盖环境变量**；均未设置时由服务端 `part_thread` 决定
   - 删除目录会递归删除所有子文件和子目录
 - **输出格式**：
   - CLI 工具的所有结果以 JSON 格式输出到 stdout，方便其他进程解析

@@ -4,9 +4,9 @@ import (
 	"os"
 	"strconv"
 	"strings"
-)
 
-const uploadParallelEnvMax = 16
+	"github.com/zhangjingwei/kuake_cli/sdk"
+)
 
 // resolveUploadParallelForProcess 返回应写入 KUAKE_UPLOAD_PARALLEL 的十进制字符串，或 "" 表示不设置。
 // 优先级（design）：命令行 flag 已解析出的值 > 环境变量 KUAKE_UPLOAD_PARALLEL（1–16）；非法 env 视为未设置。
@@ -19,7 +19,7 @@ func resolveUploadParallelForProcess(flagValue string) string {
 		return ""
 	}
 	n, err := strconv.Atoi(s)
-	if err != nil || n < 1 || n > uploadParallelEnvMax {
+	if err != nil || n < 1 || n > sdk.UploadParallelEnvMax {
 		return ""
 	}
 	return strconv.Itoa(n)

@@ -226,6 +226,9 @@ func (qc *QuarkClient) uploadPartsParallel(
 ) (map[int]string, error) {
 	jobCh := make(chan uploadPartJob, uploadParallel*2)
 	resultCh := make(chan uploadPartResult, uploadParallel*2)
+	// 仅由生产者 goroutine 关闭 jobCh；主协程在出错时通过关闭 abortCh 让生产者退出，
+	// 避免与生产者 defer close(jobCh) 竞态导致「close of closed channel / send on closed channel」。
+	abortCh := make(chan struct{})
 
 	var workerWG sync.WaitGroup
 	for i := 0; i < uploadParallel; i++ {
@@ -281,6 +284,12 @@ func (qc *QuarkClient) uploadPartsParallel(
 		var processedBytes int64
 
 		for {
+			select {
+			case <-abortCh:
+				return
+			default:
+			}
+
 			chunk := make([]byte, partSize)
 			n, err := file.Read(chunk)
 			if err == io.EOF {
@@ -327,8 +336,12 @@ func (qc *QuarkClient) uploadPartsParallel(
 				hashCtx:    currentHashCtx,
 			}
 
-			jobCh <- job
-			partNumber++
+			select {
+			case jobCh <- job:
+				partNumber++
+			case <-abortCh:
+				return
+			}
 		}
 	}()
 
@@ -367,8 +380,12 @@ func (qc *QuarkClient) uploadPartsParallel(
 		if result.err != nil {
 			if firstErr == nil {
 				firstErr = result.err
-				close(jobCh)
+				close(abortCh)
 			}
+			continue
+		}
+		if firstErr != nil {
+			// 已有失败分片时，忽略其它 worker 的迟到成功结果
 			continue
 		}
 
@@ -1246,13 +1263,19 @@ func (qc *QuarkClient) UploadFile(filePath, destPath string, progressCallback fu
 		}
 	}
 
-	// 并发数完全由服务端 part_thread 控制。
-	// 当 upPre 请求含 parallel_upload=true 时，服务端启用并行 OSS 模式，
-	// 返回 metadata.part_thread 作为并发数（通常为 3）。
+	// 默认并发数来自服务端 metadata.part_thread（upPre 含 parallel_upload=true 时返回，常见为 3）。
+	// 若进程环境设置了 KUAKE_UPLOAD_PARALLEL（1–UploadParallelEnvMax），则覆盖 part_thread；
+	// kuake 会在解析 --max_upload_parallel 后写入该变量（与文档一致）。
 	totalParts := int((fileSize + partSize - 1) / partSize)
 	uploadParallel := pre.Metadata.PartThread
 	if uploadParallel <= 0 {
 		uploadParallel = 1 // 服务端未返回时退回单线程
+	}
+	if envN, ok := uploadParallelFromEnv(); ok {
+		uploadParallel = envN
+	}
+	if uploadParallel > UploadParallelEnvMax {
+		uploadParallel = UploadParallelEnvMax
 	}
 	if uploadParallel > totalParts {
 		uploadParallel = totalParts

@@ -28,6 +28,7 @@
 - **SDK 健壮性与校验（OpenSpec `robustness-refactor`）**
   - 新增 `sdk/validation`：链式校验器、分页与路径安全（含 `ValidPathResult`）、默认值注入、`crypto/rand` 安全随机数、统一错误码与中文化校验消息
   - `UploadFile` / `DownloadFile` 对远端路径做规范化与安全校验；分享列表类方法分页与排序入参校验；CLI 经 `cmd/validation` 安全解析分页与 JSON 路径
+- **上传**：`UploadFile` 读取 `KUAKE_UPLOAD_PARALLEL`（1–16）覆盖服务端 `part_thread`（不超过分片数）；修复并行上传出错时重复关闭 `jobCh` 引发的 panic。
 
 ## v1.4.2
 
