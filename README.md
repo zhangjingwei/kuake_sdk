@@ -1,6 +1,6 @@
 # Kuake CLI
 
-[License](LICENSE)
+[English](README.en.md) · [License](LICENSE)
 
 夸克网盘文件管理 CLI 工具。
 
