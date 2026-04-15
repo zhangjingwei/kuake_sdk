@@ -1,0 +1,70 @@
+Kuake SDK / 端到端回归 — 问题记录（buglist）
+更新日期：2026-04-15（含回归验证记录）
+
+说明：本文件记录排查过程中确认的问题、根因与处理状态；部分条目依赖真实账号与网络环境。
+
+----------------------------------------------------------------------------
+BUG-001  listByFid 翻页提前结束（total 不可靠）
+----------------------------------------------------------------------------
+现象：根目录下列表不完整；CreateFolder 已成功且 CLI `list` 能看到新目录，但 GetFileInfo(路径) 报 FILE_NOT_FOUND。
+根因：当响应中存在 data.total 时，用 currentCount < total 判断是否继续翻页。若服务端 total 小于实际条目数，会在「本页已满」时误判无下一页，导致合并列表缺项；GetFileInfo 依赖父目录全量列表按 file_name 匹配，漏项即失败。
+状态：已修复 — 仅以「本页条数 < pageSize」作为结束条件；满页继续拉取；增加 maxListPages 上限防止异常死循环。
+相关代码：sdk/file.go listByFid
+/
+----------------------------------------------------------------------------
+BUG-002  GetFileInfo 使用 filepath.Base 解析远程路径（Windows）
+----------------------------------------------------------------------------
+现象：Windows 下对以 `/` 分隔的网盘路径，filepath.Base 不按 POSIX 分段，file_name 匹配错误，表现为 FILE_NOT_FOUND。
+根因：远程路径恒为 POSIX，应使用 path.Base。
+状态：已修复 — GetFileInfo 中 fileName 使用 path.Base(remotePath)。
+相关代码：sdk/file.go GetFileInfo
+
+----------------------------------------------------------------------------
+BUG-003  UploadFile 使用 filepath.Base 解析远程 destPath（Windows）
+----------------------------------------------------------------------------
+现象：端到端上传后 GetFileInfo(子目录/文件名) 失败；根目录 list 仅有目录，目录内无预期文件或路径错乱。
+根因：与 BUG-002 相同，destPath 规范化后仍为 `/a/b/c.txt` 形式，应用 path.Base 得到目标文件名与目录段；使用 filepath.Base 时 Windows 下行为不可靠，上传落点与预期不一致。
+状态：已修复 — 上传分支中 dest 解析改为 path.Base。
+相关代码：sdk/file.go UploadFile（destFileName / 目录检测）
+
+----------------------------------------------------------------------------
+BUG-004  GetFileInfo 列表回退分支中路径拼接使用 filepath.Join
+----------------------------------------------------------------------------
+现象：当 list 数据以 []interface{} 形式解析时，子路径可能带反斜杠，与网盘 POSIX 语义不一致（与匹配逻辑间接相关）。
+根因：网盘路径应使用 path.Join。
+状态：已修复 — 该分支内 Path 构建改为 path.Join(parentPathForList, name)。
+相关代码：sdk/file.go GetFileInfo（listInterface 分支）
+
+----------------------------------------------------------------------------
+BUG-005  listByFid 条目中 fid 类型非 string
+----------------------------------------------------------------------------
+现象：若 JSON 将 fid 解析为 float64，fileInfo.Fid 为空（极少数环境）。
+根因：仅做了 string 断言。
+状态：已缓解 — 对 float64 格式化为整数字符串。
+相关代码：sdk/file.go listByFid
+
+----------------------------------------------------------------------------
+ISSUE-006  端到端 DownloadFile 返回 403 / RequestDeniedByCallback（鉴权）
+----------------------------------------------------------------------------
+现象：Upload、GetFileInfo 通过后，DownloadFile 失败，OSS 回调 XML 含 Callback deny / require login [auth miss] 等。
+根因：下载链接走 OSS/回调链路，依赖当前 Cookie/会话有效；与列表、上传接口的鉴权状态可能不完全一致；令牌过期、环境差异均可能触发。
+根因（补充）：下载 URL 指向 `dl-pc-zb.pds.quark.cn` 等 OSS 域；服务端 Callback 校验与业务 API 所用 Cookie/会话可能不一致，或需额外头/字段。
+状态：非路径逻辑。2026-04-15 在「声称有效登录」的同一 `config.json` 下完成 Windows + WSL 回归：CreateFolder、目录/文件 GetFileInfo、Upload 均通过；DownloadFile 两次尝试均稳定 403（见下「回归验证记录」）。需在排除令牌陈旧后，对照抓包/文档核对下载请求是否携带与 Web 端一致的鉴权。
+建议：回归时若仅验证上传与元数据，可临时跳过下载步骤（由测试开关或单独用例控制）；本仓库 e2e 默认仍执行下载以便在健康环境下覆盖全链路。
+
+----------------------------------------------------------------------------
+回归验证记录（设计见 docs/superpowers/specs/2026-04-15-buglist-e2e-regression-design.md）
+----------------------------------------------------------------------------
+执行计划：docs/superpowers/plans/2026-04-15-buglist-e2e-regression.md
+
+- 2026-04-15  Windows 11 (10.0.26200)  go1.25.5 windows/amd64  KUAKE_E2E_CONFIG=D:\workspace\kuake_sdk\config.json  结果：**FAIL**（DownloadFile HTTP 403，RequestDeniedByCallback，require login [auth miss]，host dl-pc-zb.pds.quark.cn）。第一次失败后已重试第二次，仍 FAIL。
+- 2026-04-15  WSL2（linux/amd64，内核 6.6.87.2-microsoft-standard-WSL2）  go1.22.2 linux/amd64  KUAKE_E2E_CONFIG=/mnt/d/workspace/kuake_sdk/config.json  结果：**FAIL**（同上）。已重试第二次，仍 FAIL。
+
+说明：BUG-001～005 所涉列表/路径逻辑在本次用例中由 CreateFolder、GetFileInfo、Upload 步骤覆盖；因 Download 失败，用例在 `e2e_regression_test.go:165` 处终止，未执行 Delete。
+
+----------------------------------------------------------------------------
+端到端测试说明
+----------------------------------------------------------------------------
+启用：E2E_REGRESSION=1 或 INTEGRATION_TEST=1；配置文件见 KUAKE_E2E_CONFIG 或仓库根目录 config.json。
+顺序：先 CreateFolder，再校验目录 GetFileInfo，再 Upload，再 GetFileInfo(文件)，再 Download，最后 Delete。
+注意：根目录 `list` 仅能直接看到一级目录名；子目录内文件需进目录列表或 GetFileInfo(完整路径)；与终端中仅展示根列表的观感一致。
