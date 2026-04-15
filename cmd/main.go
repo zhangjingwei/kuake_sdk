@@ -5,8 +5,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"kuake_sdk/cmd/validation"
-	"kuake_sdk/sdk"
+	"github.com/zhangjingwei/kuake_cli/cmd/validation"
+	"github.com/zhangjingwei/kuake_cli/sdk"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -20,7 +20,7 @@ const (
 )
 
 // Version 版本号，与编译产物名称一致
-var Version = "v1.4.2"
+var Version = "v1.4.5"
 
 type CLIResult struct {
 	Success bool                   `json:"success"`
@@ -103,13 +103,7 @@ func main() {
 			}
 			command = arg
 		} else {
-			// 后续参数是命令参数
-			// 如果第一个参数是 .json 文件（向后兼容），也作为配置文件
-			if len(args) == 0 && filepath.Ext(arg) == ".json" {
-				configPath = arg
-			} else {
-				args = append(args, arg)
-			}
+			args = append(args, arg)
 		}
 	}
 
@@ -117,6 +111,8 @@ func main() {
 		printUsage()
 		os.Exit(ExitError)
 	}
+
+	loadDotEnvFiles(configPath)
 
 	// 创建客户端
 	var client *sdk.QuarkClient
@@ -130,28 +126,16 @@ func main() {
 			os.Exit(ExitError)
 		}
 	}()
-	// 优先级：cookies 参数 > 环境变量 KUAKE_COOKIE > 配置文件
-	if cookies != "" {
-		// 如果传入的值不包含 __pus=，自动添加前缀
-		if !strings.Contains(cookies, "__pus=") {
-			cookies = "__pus=" + cookies
+	// 优先级：KUAKE_COOKIE（整段）> KUAKE_PUS + KUAKE_PUUS 拼接 > -cookies/--cookies > 配置文件（BREAKING，见 CHANGELOG）
+	if norm := sdk.ResolveEnvCookieString(); norm != "" {
+		client = sdk.NewQuarkClient(configPath, norm)
+	} else if cookies != "" {
+		cookies = normalizeQuarkCookieInput(cookies)
+		if cookies == "" {
+			client = sdk.NewQuarkClient(configPath)
+		} else {
+			client = sdk.NewQuarkClient(configPath, cookies)
 		}
-		// 如果末尾没有分号，添加分号
-		if !strings.HasSuffix(cookies, ";") {
-			cookies = cookies + ";"
-		}
-		client = sdk.NewQuarkClient(configPath, cookies)
-	} else if envCookie := os.Getenv("KUAKE_COOKIE"); envCookie != "" {
-		// 从环境变量读取（OpenClaw 标准配置方式）
-		// 如果传入的值不包含 __pus=，自动添加前缀
-		if !strings.Contains(envCookie, "__pus=") {
-			envCookie = "__pus=" + envCookie
-		}
-		// 如果末尾没有分号，添加分号
-		if !strings.HasSuffix(envCookie, ";") {
-			envCookie = envCookie + ";"
-		}
-		client = sdk.NewQuarkClient(configPath, envCookie)
 	} else {
 		client = sdk.NewQuarkClient(configPath)
 	}
@@ -228,12 +212,17 @@ func printUsage() {
 
 Usage:
   kuake [options] <command> [arguments...]
-  kuake <command> [config.json] [arguments...]  (deprecated: use -c instead)
 
 Options:
   -c, --config <path>          Specify config file path (default: config.json)
-  -cookies, --cookies <value>  Specify cookie value directly (automatically adds __pus= prefix, bypasses config file)
+  -cookies, --cookies <value>  Specify cookie value directly (only when KUAKE_COOKIE empty after trim;
+                                adds __pus= prefix; bypasses config file when effective source is -cookies)
   -v, --version                Show version information
+
+Auth:
+  Env cookie: full KUAKE_COOKIE (after trim+normalize) OR split KUAKE_PUS + KUAKE_PUUS (values only, no __pus=/__puus= prefix), then -cookies/--cookies, then config file.
+  BREAKING; see CHANGELOG.
+  Optional .env: if .env exists in cwd or next to the -c/--config file directory, load it before creating the client (does not override existing env vars). Set KUAKE_LOAD_DOTENV=0 to disable.
 
 Commands:
   user                        Get user information
@@ -307,10 +296,12 @@ Pipeline Mode:
 Notes:
   - All path parameters must be quoted
   - Root directory is "/"
-  - Upload parallel can be set by --max_upload_parallel or env KUAKE_UPLOAD_PARALLEL (1-16, default 4)
+  - Upload parallel: --max_upload_parallel overrides KUAKE_UPLOAD_PARALLEL when both apply; if only
+    env is set (1-16) it is used when the flag is omitted (default 4)
   - Results output as JSON to stdout
   - Exit code: 0=success, 1=failure
-  - When using -cookies, the config file is not read, improving efficiency and avoiding inconsistencies
+  - When the effective credential source is -cookies (and KUAKE_COOKIE is empty after trim), config
+    tokens are not loaded; if KUAKE_COOKIE is set (non-empty after trim), it wins over -cookies
   - In pipe mode, each input line should be a JSON object with "path" or "fid" field
   - Use --stream with list command to output one JSON per line for pipeline processing
 `)
@@ -541,8 +532,8 @@ func handleUpload(client *sdk.QuarkClient, args []string) *CLIResult {
 		}
 	}
 
-	if uploadParallel != "" {
-		_ = os.Setenv("KUAKE_UPLOAD_PARALLEL", uploadParallel)
+	if v := resolveUploadParallelForProcess(uploadParallel); v != "" {
+		_ = os.Setenv("KUAKE_UPLOAD_PARALLEL", v)
 	}
 
 	// 进度回调，显示上传进度、速度和剩余时间

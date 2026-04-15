@@ -1,6 +1,6 @@
 # SDK 测试说明
 
-本目录包含了 kuake_sdk 的所有单元测试用例。
+本目录包含了 `github.com/zhangjingwei/kuake_cli` 模块下 `sdk` 包的所有单元测试用例。
 
 ## 测试文件结构
 
@@ -54,25 +54,13 @@ go test ./sdk -v -run TestNormalizeRootDir
 
 ### 运行集成测试
 
-要运行集成测试，需要：
+端到端回归 `TestE2E_Regression_CoreFlow`：设置 `E2E_REGRESSION=1` 或 `INTEGRATION_TEST=1`，并提供与 CLI 相同的环境凭证（`KUAKE_COOKIE` 或 `KUAKE_PUS`+`KUAKE_PUUS`）；测试会尝试加载当前目录与上级目录的 `.env`。不再通过 `config.json` / `KUAKE_E2E_CONFIG` 注入凭证。
 
-1. 准备有效的配置文件 `config.json`：
-```json
-{
-  "Quark": {
-    "access_tokens": [
-      "your_valid_token_here"
-    ]
-  }
-}
-```
-
-2. 移除测试中的 `t.Skip()` 调用
-
-3. 运行测试：
 ```bash
-go test ./sdk -v
+E2E_REGRESSION=1 go test ./sdk -run TestE2E -count=1 -v
 ```
+
+其它历史集成测试若仍依赖 `config.json`，以对应测试文件说明为准。
 
 ## 测试覆盖率
 

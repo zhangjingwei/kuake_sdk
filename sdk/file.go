@@ -25,7 +25,7 @@ import (
 	"sync"
 	"time"
 
-	"kuake_sdk/sdk/validation"
+	"github.com/zhangjingwei/kuake_cli/sdk/validation"
 )
 
 // isRetryableError 判断错误是否为可重试的瞬时网络故障
@@ -464,6 +464,45 @@ func validatePdirFidForCreateFolder(pdirFid string) error {
 		return nil
 	}
 	return validation.ValidFID().Validate(p)
+}
+
+// parentDirFidForCreateFolder 将远程父目录路径解析为 CreateFolder 所需的 pdir_fid（根目录返回 "/").
+func (qc *QuarkClient) parentDirFidForCreateFolder(parentPath string) (string, *StandardResponse) {
+	p := normalizePath(strings.TrimSpace(parentPath))
+	if p == "" || p == "/" || p == "." {
+		return "/", nil
+	}
+	info, err := qc.GetFileInfo(p)
+	if err != nil {
+		return "", &StandardResponse{
+			Success: false,
+			Code:    "GET_PARENT_DIRECTORY_ERROR",
+			Message: fmt.Sprintf("failed to get parent directory info: %v", err),
+			Data:    nil,
+		}
+	}
+	if info == nil || !info.Success {
+		msg := "unknown error"
+		if info != nil {
+			msg = info.Message
+		}
+		return "", &StandardResponse{
+			Success: false,
+			Code:    "GET_PARENT_DIRECTORY_ERROR",
+			Message: fmt.Sprintf("failed to get parent directory: %s", msg),
+			Data:    nil,
+		}
+	}
+	fid, ok := info.Data["fid"].(string)
+	if !ok || fid == "" {
+		return "", &StandardResponse{
+			Success: false,
+			Code:    "INVALID_PARENT_DIRECTORY",
+			Message: "parent directory info is invalid: fid not found or empty",
+			Data:    nil,
+		}
+	}
+	return fid, nil
 }
 
 func validationToStandardResponse(err error) *StandardResponse {
@@ -985,7 +1024,16 @@ func (qc *QuarkClient) UploadFile(filePath, destPath string, progressCallback fu
 							parentPathForCreate = normalizePath(currentPath[:lastSlash])
 						}
 					}
-					createResp, createErr := qc.CreateFolder(part, parentPathForCreate)
+					pdirFid, resolveErr := qc.parentDirFidForCreateFolder(parentPathForCreate)
+					if resolveErr != nil {
+						return &StandardResponse{
+							Success: false,
+							Code:    "CREATE_DIRECTORY_ERROR",
+							Message: fmt.Sprintf("failed to create directory %s: %s", currentPath, resolveErr.Message),
+							Data:    nil,
+						}, nil
+					}
+					createResp, createErr := qc.CreateFolder(part, pdirFid)
 					if createErr != nil {
 						return &StandardResponse{
 							Success: false,

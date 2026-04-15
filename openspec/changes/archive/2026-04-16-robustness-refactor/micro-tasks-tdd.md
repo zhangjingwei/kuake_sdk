@@ -10,7 +10,7 @@
 **默认命令：**
 
 ```bash
-cd d:/workspace/kuake_sdk
+cd d:/workspace/kuake_cli
 go test ./sdk/validation/... -count=1
 go test ./sdk/... -count=1
 go test ./cmd/... -count=1
@@ -206,7 +206,7 @@ go test ./cmd/... -count=1
 ## 执行记录汇总（自动化验收）
 
 **日期：** 2026-04-15  
-**环境：** Windows，`go test` 默认；仓库路径 `d:\workspace\kuake_sdk`。
+**环境：** Windows，`go test` 默认；仓库路径 `d:\workspace\kuake_cli`。
 
 | 区块 | 状态 | 说明 |
 |------|------|------|

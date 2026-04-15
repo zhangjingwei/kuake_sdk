@@ -51,7 +51,7 @@ build() {
     if [ -n "$tags" ]; then
         build_cmd="$build_cmd -tags=\"$tags\""
     fi
-    build_cmd="$build_cmd -o \"$output_path\" ./cmd/main.go"
+    build_cmd="$build_cmd -o \"$output_path\" ./cmd"
     
     eval $build_cmd
     
@@ -85,24 +85,43 @@ build "linux" "arm64" "" ""
 build "darwin" "amd64" "" ""
 build "windows" "amd64" ".exe" ""
 
-# 创建示例配置文件到 dist 目录
-echo -e "${YELLOW}Creating example config file...${NC}"
-cat > "${BUILD_DIR}/config.json" << 'EOF'
-{
-  "Quark": {
-    "access_tokens": [
-      "__pus=your_pus_value_here;"
-    ]
-  }
-}
-EOF
-echo -e "${GREEN}✓ Example config file created: config.json${NC}"
+# 复制环境变量模板到 dist（与仓库根 .env.example 一致）
+echo -e "${YELLOW}Copying .env.example to ${BUILD_DIR}/...${NC}"
+if [ -f ".env.example" ]; then
+    cp ".env.example" "${BUILD_DIR}/.env.example"
+    echo -e "${GREEN}✓ Example env template: ${BUILD_DIR}/.env.example${NC}"
+else
+    echo -e "${RED}Warning: .env.example not found at repo root, skipped${NC}"
+fi
+echo ""
+
+# 打包 OpenClaw 技能目录（与 OS 无关，随版本号命名，便于 Release 附件分发）
+echo -e "${YELLOW}Packaging OpenClaw skill (openclaw/kuake_skill)...${NC}"
+if [ ! -f "openclaw/kuake_skill/SKILL.md" ]; then
+    echo -e "${RED}Error: openclaw/kuake_skill/SKILL.md not found${NC}"
+    exit 1
+fi
+SKILL_ZIP="${BUILD_DIR}/kuake_skill-${VERSION}.zip"
+SKILL_TGZ="${BUILD_DIR}/kuake_skill-${VERSION}.tar.gz"
+rm -f "$SKILL_ZIP" "$SKILL_TGZ"
+if command -v zip >/dev/null 2>&1; then
+    (cd openclaw && zip -qr "../${SKILL_ZIP}" kuake_skill)
+    SKILL_ARCHIVE_NAME="${SKILL_ZIP#$BUILD_DIR/}"
+    echo -e "${GREEN}✓ OpenClaw skill: ${SKILL_ARCHIVE_NAME}${NC}"
+elif command -v tar >/dev/null 2>&1; then
+    tar -czf "$SKILL_TGZ" -C openclaw kuake_skill
+    SKILL_ARCHIVE_NAME="${SKILL_TGZ#$BUILD_DIR/}"
+    echo -e "${GREEN}✓ OpenClaw skill: ${SKILL_ARCHIVE_NAME} (no zip in PATH; install zip for .zip)${NC}"
+else
+    echo -e "${RED}Error: need 'zip' or 'tar' to package openclaw/kuake_skill${NC}"
+    exit 1
+fi
 echo ""
 
 echo -e "${GREEN}All platforms built successfully!${NC}"
 echo ""
 echo "Built files:"
-ls -lh "$BUILD_DIR" | grep -E "(${PROJECT_NAME}|config)" | awk '{print "  " $9 " (" $5 ")"}'
+ls -lhA "$BUILD_DIR" | grep -E "(${PROJECT_NAME}|kuake_skill|\\.env\\.example)" | awk '{print "  " $9 " (" $5 ")"}'
 echo ""
 echo -e "${YELLOW}Usage instructions:${NC}"
 echo "  Linux/macOS:"
@@ -110,6 +129,8 @@ echo "    ./dist/kuake-${VERSION}-linux-amd64 <command>"
 echo "    ./dist/kuake-${VERSION}-darwin-amd64 <command>"
 echo "  Windows:"
 echo "    dist\\kuake-${VERSION}-windows-amd64.exe <command>"
+echo "  OpenClaw:"
+echo "    Extract ${SKILL_ARCHIVE_NAME}, use the inner kuake_skill folder as the skill directory, and install a kuake binary from ${BUILD_DIR}/ onto PATH (see README)."
 echo ""
-echo -e "${YELLOW}Note: Binary files and example config file are located in ${BUILD_DIR}/ directory${NC}"
+echo -e "${YELLOW}Note: Binaries, .env.example, and OpenClaw skill archive are under ${BUILD_DIR}/; copy .env.example to .env and fill credentials (see README).${NC}"
 

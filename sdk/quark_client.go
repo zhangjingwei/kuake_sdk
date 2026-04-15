@@ -15,7 +15,7 @@ import (
 	"strings"
 	"time"
 
-	"kuake_sdk/sdk/validation"
+	"github.com/zhangjingwei/kuake_cli/sdk/validation"
 )
 
 // NewQuarkClient 创建夸克网盘客户端（支持多个 token）

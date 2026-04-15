@@ -4,6 +4,11 @@ push.sh
 # 配置文件（包含敏感信息）
 config.json
 
+# 本地环境变量文件（可能含 KUAKE_COOKIE 等敏感信息）
+.env
+.env.*
+!.env.example
+
 # 编译文件和构建产物（通过 GitHub Release 发布，不提交到仓库）
 *.exe
 *.exe~
@@ -13,6 +18,9 @@ config.json
 kuake_sdk
 kuake_sdk_local
 kuake_sdk_quark
+kuake_cli
+kuake_cli_local
+kuake_cli_quark
 kuake
 main
 dist/

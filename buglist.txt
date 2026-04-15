@@ -49,7 +49,8 @@ ISSUE-006  端到端 DownloadFile 返回 403 / RequestDeniedByCallback（鉴权�
 现象：Upload、GetFileInfo 通过后，DownloadFile 失败，OSS 回调 XML 含 Callback deny / require login [auth miss] 等。
 根因：下载链接走 OSS/回调链路，依赖当前 Cookie/会话有效；与列表、上传接口的鉴权状态可能不完全一致；令牌过期、环境差异均可能触发。
 根因（补充）：下载 URL 指向 `dl-pc-zb.pds.quark.cn` 等 OSS 域；服务端 Callback 校验与业务 API 所用 Cookie/会话可能不一致，或需额外头/字段。
-状态：非路径逻辑。2026-04-15 在「声称有效登录」的同一 `config.json` 下完成 Windows + WSL 回归：CreateFolder、目录/文件 GetFileInfo、Upload 均通过；DownloadFile 两次尝试均稳定 403（见下「回归验证记录」）。需在排除令牌陈旧后，对照抓包/文档核对下载请求是否携带与 Web 端一致的鉴权。
+状态（更新）：**客户端侧已缓解** — `DownloadFile` 为下载请求补充与网盘页一致的 HTTP 头（`User-Agent`、`Referer`、`Sec-Fetch-*` 等）并显式携带解析后的 `Cookie`；下载使用独立 `http.Client` 且启用 HTTP/2，与主 API 链路分离（`sdk/file.go`，与 **CHANGELOG v1.4.2** 同批变更）。用于解决/减轻此前「请求形态不像浏览器」导致的 **403 / RequestDeniedByCallback**。若仍 403，多为 Cookie 不完整或会话过期，需使用浏览器整段 Cookie（见 `DownloadFile` 调试输出与 `warnDownloadCookieIncomplete`）。
+状态（历史记录）：2026-04-15 在「声称有效登录」的同一 `config.json` 下完成 Windows + WSL 回归：CreateFolder、目录/文件 GetFileInfo、Upload 均通过；DownloadFile 两次尝试均稳定 403（见下「回归验证记录」）。该记录反映**当时构建或配置**下的结果；与上条「客户端侧已缓解」并不矛盾。
 建议：回归时若仅验证上传与元数据，可临时跳过下载步骤（由测试开关或单独用例控制）；本仓库 e2e 默认仍执行下载以便在健康环境下覆盖全链路。
 
 ----------------------------------------------------------------------------
@@ -57,14 +58,14 @@ ISSUE-006  端到端 DownloadFile 返回 403 / RequestDeniedByCallback（鉴权�
 ----------------------------------------------------------------------------
 执行计划：docs/superpowers/plans/2026-04-15-buglist-e2e-regression.md
 
-- 2026-04-15  Windows 11 (10.0.26200)  go1.25.5 windows/amd64  KUAKE_E2E_CONFIG=D:\workspace\kuake_sdk\config.json  结果：**FAIL**（DownloadFile HTTP 403，RequestDeniedByCallback，require login [auth miss]，host dl-pc-zb.pds.quark.cn）。第一次失败后已重试第二次，仍 FAIL。
-- 2026-04-15  WSL2（linux/amd64，内核 6.6.87.2-microsoft-standard-WSL2）  go1.22.2 linux/amd64  KUAKE_E2E_CONFIG=/mnt/d/workspace/kuake_sdk/config.json  结果：**FAIL**（同上）。已重试第二次，仍 FAIL。
+- 2026-04-15  Windows 11 (10.0.26200)  go1.25.5 windows/amd64  KUAKE_E2E_CONFIG=D:\workspace\kuake_cli\config.json  结果：**FAIL**（DownloadFile HTTP 403，RequestDeniedByCallback，require login [auth miss]，host dl-pc-zb.pds.quark.cn）。第一次失败后已重试第二次，仍 FAIL。
+- 2026-04-15  WSL2（linux/amd64，内核 6.6.87.2-microsoft-standard-WSL2）  go1.22.2 linux/amd64  KUAKE_E2E_CONFIG=/mnt/d/workspace/kuake_cli/config.json  结果：**FAIL**（同上）。已重试第二次，仍 FAIL。
 
 说明：BUG-001～005 所涉列表/路径逻辑在本次用例中由 CreateFolder、GetFileInfo、Upload 步骤覆盖；因 Download 失败，用例在 `e2e_regression_test.go:165` 处终止，未执行 Delete。
 
 ----------------------------------------------------------------------------
 端到端测试说明
 ----------------------------------------------------------------------------
-启用：E2E_REGRESSION=1 或 INTEGRATION_TEST=1；配置文件见 KUAKE_E2E_CONFIG 或仓库根目录 config.json。
+启用：E2E_REGRESSION=1 或 INTEGRATION_TEST=1；凭证为 KUAKE_COOKIE 或 KUAKE_PUS/KUAKE_PUUS（测试会尝试加载 cwd 与上级目录的 .env），不再使用 KUAKE_E2E_CONFIG 或 config.json。
 顺序：先 CreateFolder，再校验目录 GetFileInfo，再 Upload，再 GetFileInfo(文件)，再 Download，最后 Delete。
 注意：根目录 `list` 仅能直接看到一级目录名；子目录内文件需进目录列表或 GetFileInfo(完整路径)；与终端中仅展示根列表的观感一致。

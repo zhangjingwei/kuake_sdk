@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/joho/godotenv"
 )
 
 // 端到端回归：真实调用夸克网盘 API，验证核心链路。
@@ -16,42 +18,30 @@ import (
 //   - E2E_REGRESSION=1
 //   - INTEGRATION_TEST=1（与现有集成测试共用开关）
 //
-// 配置文件：优先 KUAKE_E2E_CONFIG（绝对或相对路径）；否则依次尝试当前目录、上级目录的 config.json。
+// 凭证：仅使用与 kuake CLI 相同的环境变量（见 ResolveEnvCookieString）——KUAKE_COOKIE 或 KUAKE_PUS+KUAKE_PUUS。
+// 本测试会尝试加载「当前工作目录」与「上级目录」下的 `.env`（不覆盖已在环境中的变量），便于与仓库根目录 `.env` 对齐。
 //
-// Windows PowerShell 示例：
-//   $env:E2E_REGRESSION=1; $env:KUAKE_E2E_CONFIG="D:\workspace\kuake_sdk\config.json"; go test ./sdk -run TestE2E -count=1 -v
+// Windows PowerShell 示例（仅用环境变量，无需 json）：
+//   $env:E2E_REGRESSION=1; $env:KUAKE_COOKIE="..."; go test ./sdk -run TestE2E -count=1 -v
 
 func e2eRegressionEnabled() bool {
 	return os.Getenv("E2E_REGRESSION") == "1" || os.Getenv("INTEGRATION_TEST") == "1"
 }
 
-func resolveE2EConfigPath(t *testing.T) string {
-	t.Helper()
-	if p := os.Getenv("KUAKE_E2E_CONFIG"); p != "" {
-		if _, err := os.Stat(p); err != nil {
-			t.Fatalf("KUAKE_E2E_CONFIG is set but not readable: %v", err)
-		}
-		abs, err := filepath.Abs(p)
-		if err != nil {
-			t.Fatalf("KUAKE_E2E_CONFIG abs: %v", err)
-		}
-		return abs
-	}
+// e2eTryLoadDotEnv 尝试加载 cwd 与 ../.env，与本地开发习惯一致；不覆盖已 export 的变量。
+func e2eTryLoadDotEnv() {
 	wd, err := os.Getwd()
 	if err != nil {
-		t.Fatalf("getwd: %v", err)
+		return
 	}
-	for _, rel := range []string{"config.json", filepath.Join("..", "config.json")} {
-		c := filepath.Join(wd, rel)
-		if _, err := os.Stat(c); err == nil {
-			abs, err := filepath.Abs(c)
-			if err != nil {
-				t.Fatalf("abs config: %v", err)
-			}
-			return abs
+	for _, rel := range []string{".env", filepath.Join("..", ".env")} {
+		p := filepath.Join(wd, rel)
+		st, err := os.Stat(p)
+		if err != nil || st.IsDir() {
+			continue
 		}
+		_ = godotenv.Load(p)
 	}
-	return ""
 }
 
 func mustFid(data map[string]interface{}) string {
@@ -74,12 +64,13 @@ func TestE2E_Regression_CoreFlow(t *testing.T) {
 	if !e2eRegressionEnabled() {
 		t.Skip("Skipping e2e regression. Set E2E_REGRESSION=1 or INTEGRATION_TEST=1.")
 	}
-	configPath := resolveE2EConfigPath(t)
-	if configPath == "" {
-		t.Skip("No config: set KUAKE_E2E_CONFIG or place config.json in module or parent directory.")
-	}
+	e2eTryLoadDotEnv()
 
-	client := NewQuarkClient(configPath)
+	cookie := ResolveEnvCookieString()
+	if cookie == "" {
+		t.Skip("No credentials: set KUAKE_COOKIE or KUAKE_PUS/KUAKE_PUUS, or place .env in cwd or parent (loaded before this check).")
+	}
+	client := NewQuarkClient(DEFAULT_CONFIG_PATH, cookie)
 	if client == nil {
 		t.Fatal("NewQuarkClient returned nil")
 	}

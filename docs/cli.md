@@ -1,6 +1,6 @@
 # kuake CLI 使用说明
 
-命令行工具的完整参考（配置、子命令、输出约定与示例）。若需在 **OpenClaw** 中集成，另见 [openclaw/references/cli-reference.md](../openclaw/references/cli-reference.md)。
+命令行工具的完整参考（配置、子命令、输出约定与示例）。**OpenClaw 用户**：安装 Releases 中的 `kuake` 并配置 `PATH` 与凭证（如下文环境变量）；技能加载与自检见 [openclaw/kuake_skill/SKILL.md](../openclaw/kuake_skill/SKILL.md)、[verification.md](../openclaw/kuake_skill/verification.md)。
 
 ## 配置说明
 
@@ -34,12 +34,28 @@
 
 ```bash
 kuake [options] <command> [arguments...]
-kuake <command> [config.json] [arguments...]  (deprecated: use -c instead)
 ```
 
 **选项**：
 - `-c, --config <path>`: 指定配置文件路径（默认: config.json）
-- `-cookies, --cookies <value>`: 直接指定 cookie 值（自动添加 `__pus=` 前缀，绕过配置文件）
+- `-cookies, --cookies <value>`: 在 `KUAKE_COOKIE` 为空（或 trim 后为空）时指定 Cookie；与 `KUAKE_COOKIE` 走相同的规范化（`__pus=`、末尾分号）。当生效的 Cookie 来源为 `-cookies` 时，不使用配置文件中的 `access_tokens`（见「环境变量参考」）
+
+### 环境变量参考
+
+仓库根目录提供 **[`.env.example`](../.env.example)**，可复制为 `.env` 后按需填写。`kuake` 在**解析完命令行之后**、创建客户端之前，若存在则依次加载：**当前工作目录**下的 `.env`，以及与 `-c` / `--config` **同目录**下的 `.env`（后加载的键若已在进程环境中存在则**不会覆盖**，与 [godotenv](https://github.com/joho/godotenv) 的 `Load` 语义一致）。设置 **`KUAKE_LOAD_DOTENV=0`** 可关闭自动加载。仍可在 shell、`direnv` 或 CI 中事先 `export`，优先级高于 `.env` 文件中的默认值。
+
+| 变量名 | 谁读取 | 用途 | 说明 |
+|--------|--------|------|------|
+| `KUAKE_LOAD_DOTENV` | `kuake`（cmd） | 是否自动加载 `.env` | 仅当值为 **`0`**（trim 后）时关闭；未设置或其它值均启用（仅当对应路径存在 `.env` 文件时才会加载） |
+| `KUAKE_COOKIE` | `kuake`（cmd） | 整段会话 Cookie | **优先于**下方拆分变量；trim 并规范化后非空则作为凭证（覆盖 `-cookies` 与配置文件） |
+| `KUAKE_PUS` | `kuake`（cmd） | `__pus` 的**值**（不要写 `__pus=` 前缀） | 仅当 `KUAKE_COOKIE` 规范化后为空时使用；可与 `KUAKE_PUUS` 组合 |
+| `KUAKE_PUUS` | `kuake`（cmd） | `__puus` 的**值**（不要写 `__puus=` 前缀） | 同上；可单独使用（仅 `__puus`）或仅 `KUAKE_PUS` 或两者一起 |
+| `-cookies` / `--cookies` | `kuake`（cmd） | 同上 | 当 `KUAKE_COOKIE` 为空时使用；仍会通过 CLI 做与 env 相同的规范化（`__pus=`、分号） |
+| `KUAKE_UPLOAD_PARALLEL` | `kuake`（cmd，`upload`） | 上传并行度 1–16 | 未传 `--max_upload_parallel` 时读取；**命令行 flag 优先于本变量** |
+| `KUake_DEBUG` | SDK（`QuarkClient`） | 调试输出 | 设为 `1` 开启；变量名大小写以代码为准 |
+| `E2E_REGRESSION` / `INTEGRATION_TEST` | `go test ./sdk` | 启用端到端回归 `TestE2E_Regression_CoreFlow` | 置 `1` 后须同时提供 **`KUAKE_COOKIE` 或 `KUAKE_PUS`+`KUAKE_PUUS`**；测试会尝试加载 cwd 与 `../.env`；**不再**读取 `config.json` / `KUAKE_E2E_CONFIG`；非 `kuake` 二进制行为 |
+
+使用 OpenClaw 等自动化环境时，请保证 **`kuake` 在 `PATH` 中**；`kuake` **不**读取 `KUAKE_PATH` 环境变量。
 
 ### 可用命令
 
@@ -72,8 +88,8 @@ kuake <command> [config.json] [arguments...]  (deprecated: use -c instead)
   - `dest_dir`: 目标目录（可选，默认 `"/"`），可以是路径或 FID
   - 默认会转存分享中的所有文件到指定目录
 - **并行上传参数**：
-  - `--max_upload_parallel N`：设置并行上传的分片数量（1-16，默认 4）
-  - 也支持通过环境变量 `KUAKE_UPLOAD_PARALLEL` 设置
+  - `--max_upload_parallel N`：设置并行上传的分片数量（1-16，默认 4）；**传入本 flag 时优先于**环境变量 `KUAKE_UPLOAD_PARALLEL`
+  - 未传 `--max_upload_parallel` 时，可读取环境变量 `KUAKE_UPLOAD_PARALLEL`（合法值 1–16）
   - 并行上传仅在满足条件时启用（新上传、多分片文件等）
   - 断点续传时自动使用顺序上传，确保兼容性
 - **管道模式**：
@@ -122,11 +138,11 @@ kuake <command> [config.json] [arguments...]  (deprecated: use -c instead)
 ### 使用示例
 
 ```bash
-# 获取用户信息（使用默认配置文件 config.json）
+# 获取用户信息（凭证来自 .env / 环境变量或默认 config.json，见上文）
 ./kuake-{version}-{os}-{arch} user
 
 # 获取用户信息（使用自定义配置文件）
-./kuake-{version}-{os}-{arch} user custom.json
+./kuake-{version}-{os}-{arch} -c custom.json user
 
 # 列出根目录
 ./kuake-{version}-{os}-{arch} list "/"
@@ -166,7 +182,7 @@ export KUAKE_UPLOAD_PARALLEL=8
 ./kuake-{version}-{os}-{arch} share "/file.txt" 7 "false"
 
 # 创建分享链接（30天，需要提取码，使用自定义配置文件）
-./kuake-{version}-{os}-{arch} share "/file.txt" 30 "true" custom.json
+./kuake-{version}-{os}-{arch} -c custom.json share "/file.txt" 30 "true"
 
 # 取消分享（通过 share_id）
 ./kuake-{version}-{os}-{arch} share-delete "fdd8bfd93f21491ab80122538bec310d"
@@ -192,7 +208,7 @@ export KUAKE_UPLOAD_PARALLEL=8
 # 查看帮助
 ./kuake-{version}-{os}-{arch} help
 
-# 使用 -cookies 参数（绕过配置文件，只需提供 cookie 值）
+# 使用 -cookies 参数（在 KUAKE_COOKIE 未设置时生效；此时不使用配置文件中的 access_tokens）
 ./kuake-{version}-{os}-{arch} -cookies "your_cookie_value_here" user
 ./kuake-{version}-{os}-{arch} -cookies "your_cookie_value_here" upload "file.txt" "/folder/file.txt"
 
@@ -228,20 +244,20 @@ export KUAKE_UPLOAD_PARALLEL=8
   - Linux/macOS 用户继续使用标准 Unix 路径格式（`/a/b/c`）
   - 所有路径最终都会标准化为 Unix 风格，确保跨平台一致性
 - **配置文件**：
-  - 默认配置文件路径：`config.json`（当前目录）
-  - 配置文件参数是可选的，放在命令之后、其他参数之前
-  - 配置文件参数必须是 `.json` 扩展名
-  - 示例：`kuake user custom.json`（使用自定义配置文件）
-- **Cookie 参数**：
-  - 使用 `-cookies` 或 `--cookies` 参数可直接指定 cookie 值，无需配置文件
-  - 只需提供 cookie 值，工具会自动添加 `__pus=` 前缀和末尾分号
-  - 使用 `-cookies` 参数时，不会读取配置文件，提高效率并避免不一致
-  - 示例：`kuake -cookies "your_cookie_value" user`
+  - 默认配置文件路径：`config.json`（当前目录）；指定其它文件请使用 **`-c` / `--config`** 并在其后写配置文件路径（选项放在子命令之前），勿再使用已移除的旧式「子命令后的首个 `.json` 当配置」行为
+  - 示例：`kuake -c ./custom.json user`
+- **Cookie 与凭证优先级**：
+  - 顺序为：**`KUAKE_COOKIE`（整段，trim 后非空）** 优先于 **`KUAKE_PUS` + `KUAKE_PUUS`（拼接后再规范化）**，再优先于 **`-cookies` / `--cookies`**，再优先于配置文件中的 `access_tokens`
+  - 若 `KUAKE_COOKIE` 规范化后非空，则以其为准；否则若 `KUAKE_PUS` / `KUAKE_PUUS` 任一侧非空，则拼接后规范化为准；上述任一成立时，`-cookies` 与配置文件中的 token 均不会作为会话凭证使用
+  - 当生效的 Cookie 来源为 `-cookies`（即整段 `KUAKE_COOKIE` 与拆分变量拼接后仍无有效凭证）时，**不**加载配置文件中的 `access_tokens`
+  - `-cookies`、整段 `KUAKE_COOKIE` 与拆分拼接结果使用相同的规范化规则（裸串补 `__pus=`、含 `__puus=` 时不重复加 `__pus=`、末尾分号）
+  - 示例：`kuake -cookies "your_cookie_value" user`（在环境变量未提供有效凭证时）
+  - 端到端回归（`E2E_REGRESSION` / `INTEGRATION_TEST`）：与上表相同，**仅**从环境变量（及测试内加载的 `.env`）取凭证，**不使用** `KUAKE_E2E_CONFIG` 与 `config.json`。
 - **操作说明**：
   - 所有操作都通过夸克网盘 API 进行
   - 需要有效的 Cookie（access_token）才能使用
   - 上传操作支持进度显示（输出到 stderr）
-  - 上传操作支持并行上传，可通过 `--max_upload_parallel` 参数或 `KUAKE_UPLOAD_PARALLEL` 环境变量配置（1-16，默认 4）
+  - 上传并行度：未传 `--max_upload_parallel` 时可使用 `KUAKE_UPLOAD_PARALLEL`（1–16）；**传入 `--max_upload_parallel` 时覆盖环境变量**；默认 4
   - 删除目录会递归删除所有子文件和子目录
 - **输出格式**：
   - CLI 工具的所有结果以 JSON 格式输出到 stdout，方便其他进程解析

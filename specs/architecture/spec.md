@@ -73,7 +73,7 @@ Kuake 是一个以 Go 构建的命令行工具，提供夸克网盘操作能力�
 用户操作模块负责：
 
 - 初始化用户身份信息。
-- 读取 `config.json` 中的 access token。
+- 从环境变量（`KUAKE_COOKIE` / `KUAKE_PUS`+`KUAKE_PUUS`）或可选的 `config.json` 中 `access_tokens` 取得会话凭证（CLI 优先级见 `docs/cli.md`）。
 - 获取账户基本信息与会员容量信息。
 - 管理认证有效性与重试策略。
 
@@ -89,9 +89,9 @@ Kuake 是一个以 Go 构建的命令行工具，提供夸克网盘操作能力�
 
 配置模块负责：
 
-- 解析并加载本地 `config.json`。
+- 解析并加载本地 `config.json`（当 CLI 未从环境变量获得有效 Cookie 时）。
 - 提供默认配置路径 `config.json`。
-- 校验必需配置项（如 `access_tokens`）。
+- 校验 `config.json` 中必需项（如 `access_tokens`）。
 - 提供测试环境下的临时配置加载机制。
 
 ## 5. 核心组件交互关系
@@ -161,7 +161,7 @@ cmd/ --> sdk.NewQuarkClient --> QuarkClient
 
 - 安装 Go 1.21
 - 克隆仓库后，运行 `./build.sh` 进行本地构建
-- 在项目根目录创建 `config.json` 用于测试和运行
+- 在项目根复制 `.env.example` 为 `.env` 并填入凭证（推荐）；或按需使用 `config.json`（详见 `README.md` / `docs/cli.md`）
 - 运行 `go test ./...` 进行单元测试
 
 ## 10. 代码规范说明

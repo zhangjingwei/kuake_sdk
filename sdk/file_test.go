@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"kuake_sdk/sdk/validation"
+	"github.com/zhangjingwei/kuake_cli/sdk/validation"
 )
 
 func TestNormalizePath(t *testing.T) {

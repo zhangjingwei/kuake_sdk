@@ -11,21 +11,23 @@ $ErrorActionPreference = "Stop"
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $ProjectRoot = Split-Path -Parent $ScriptDir
 $DistDir = Join-Path $ProjectRoot "dist"
-$ExeFile = Join-Path $DistDir "kuake-v1.4.2-windows-amd64.exe"
+$Candidates = Get-ChildItem -Path $DistDir -Filter "kuake-v*-windows-amd64.exe" -File -ErrorAction SilentlyContinue
+if (-not $Candidates -or $Candidates.Count -eq 0) {
+    Write-Host "错误: 在 dist 目录找不到 kuake-v*-windows-amd64.exe" -ForegroundColor Red
+    Write-Host "  目录: $DistDir" -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "请先运行仓库根目录的 .\build.sh 或从 Releases 下载 Windows 构建产物" -ForegroundColor Yellow
+    exit 1
+}
+$ExeFile = ($Candidates | Sort-Object LastWriteTime -Descending | Select-Object -First 1).FullName
 $BinDir = Join-Path $env:USERPROFILE "bin"
 $TargetExe = Join-Path $BinDir "kuake.exe"
 
 Write-Host "=== Kuake Windows 环境设置脚本 ===" -ForegroundColor Green
 Write-Host ""
 
-# 检查可执行文件是否存在
-if (-not (Test-Path $ExeFile)) {
-    Write-Host "错误: 找不到可执行文件" -ForegroundColor Red
-    Write-Host "  预期位置: $ExeFile" -ForegroundColor Yellow
-    Write-Host ""
-    Write-Host "请确保已编译项目或从 Releases 下载了可执行文件" -ForegroundColor Yellow
-    exit 1
-}
+Write-Host "将安装: $ExeFile" -ForegroundColor Cyan
+Write-Host ""
 
 # 创建 bin 目录
 Write-Host "创建工具目录..." -ForegroundColor Green
@@ -107,6 +109,6 @@ Write-Host "下一步:" -ForegroundColor Green
 Write-Host "  1. 关闭并重新打开 PowerShell 窗口（使 PATH 生效）" -ForegroundColor Yellow
 Write-Host "  2. 运行: " -NoNewline
 Write-Host "kuake version" -ForegroundColor Cyan
-Write-Host "  3. 如果正常，运行部署脚本: " -NoNewline
-Write-Host ".\scripts\deploy-openclaw-skill.ps1" -ForegroundColor Cyan
+Write-Host "  3. OpenClaw 集成见仓库 " -NoNewline
+Write-Host "openclaw/kuake_skill/" -ForegroundColor Cyan
 Write-Host ""

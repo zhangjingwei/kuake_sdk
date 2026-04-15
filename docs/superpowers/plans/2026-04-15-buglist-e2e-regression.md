@@ -32,7 +32,7 @@
 在 **PowerShell** 中（将路径换成你的实际仓库路径）：
 
 ```powershell
-Set-Location D:\workspace\kuake_sdk
+Set-Location D:\workspace\kuake_cli
 Test-Path .\config.json
 # 期望: True；若使用自定义路径，改为 Test-Path $env:KUAKE_E2E_CONFIG 的目标文件
 ```
@@ -52,7 +52,7 @@ go test ./sdk -run TestE2E_Regression_CoreFlow -count=1 -v
 
 ```powershell
 $env:E2E_REGRESSION = "1"
-$env:KUAKE_E2E_CONFIG = "D:\workspace\kuake_sdk\config.json"
+$env:KUAKE_E2E_CONFIG = "D:\workspace\kuake_cli\config.json"
 go test ./sdk -run TestE2E_Regression_CoreFlow -count=1 -v
 ```
 
@@ -89,7 +89,7 @@ go version
 假设 Windows 盘挂载为 `/mnt/d`：
 
 ```bash
-cd /mnt/d/workspace/kuake_sdk
+cd /mnt/d/workspace/kuake_cli
 test -f config.json && echo OK
 ```
 
@@ -100,7 +100,7 @@ test -f config.json && echo OK
 ```bash
 export E2E_REGRESSION=1
 # 如需显式配置：
-# export KUAKE_E2E_CONFIG=/mnt/d/workspace/kuake_sdk/config.json
+# export KUAKE_E2E_CONFIG=/mnt/d/workspace/kuake_cli/config.json
 go test ./sdk -run TestE2E_Regression_CoreFlow -count=1 -v
 ```
 

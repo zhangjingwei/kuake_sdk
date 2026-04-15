@@ -2,7 +2,7 @@ schema: spec-driven
 
 # 创建 proposal / design / tasks 等产物时，会提供给 AI 的项目背景（可选但建议填写）
 context: |
-  项目：Kuake CLI（kuake_sdk）——夸克网盘非官方第三方 CLI/SDK（Go）。
+  项目：Kuake CLI（github.com/zhangjingwei/kuake_cli）——夸克网盘非官方第三方 CLI/SDK（Go）。
   能力：文件与目录、上传下载、分享与转存、JSON/管道模式、技能集成等。
   许可证：AGPL-3.0；商业使用须另行授权。
   约定：与现有 Go 代码风格一致；CLI 行为见 docs/cli.md；重大行为变更需反映在 OpenSpec 与 docs/CHANGELOG。

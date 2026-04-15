@@ -1,13 +1,45 @@
 # 变更日志
 
+## [Unreleased]
+
+## v1.4.5
+
+### BREAKING
+
+- **CLI**：移除已废弃的「子命令之后首个以 `.json` 结尾的位置参数视为配置文件」行为（曾导致 `upload` 本地 JSON 文件等误解析）。指定配置文件请始终使用 **`-c` / `--config`** 并传入路径，凭证亦可使用 `.env` / `KUAKE_COOKIE` 等；曾写 `kuake user ./my.json` 的脚本请改为 `kuake -c ./my.json user`。
+
+## v1.4.4
+
+### BREAKING
+
+- **认证凭证来源优先级**调整为：`KUAKE_COOKIE`（trim 后非空）优先于 `-cookies` / `--cookies`，再优先于配置文件。曾依赖「命令行覆盖已 export 的 `KUAKE_COOKIE`」的脚本须先清除环境变量（POSIX: `unset KUAKE_COOKIE`；PowerShell: `Remove-Item Env:KUAKE_COOKIE`）或改用配置文件。
+- **上传**：未传 `--max_upload_parallel` 时，`kuake` 会读取 `KUAKE_UPLOAD_PARALLEL`（1–16）；传入 flag 时 **flag 优先于环境变量**。
+- **文档**：已移除「`kuake` 二进制通过 `KUAKE_PATH` 解析路径」的表述；请通过系统 **PATH** 或包装脚本定位 `kuake`。
+- **Go module（BREAKING）**：`module` 路径改为 `github.com/zhangjingwei/kuake_cli`，与 GitHub 仓库 `zhangjingwei/kuake_cli` 对齐，可使用 `go get github.com/zhangjingwei/kuake_cli@<版本>`。请将原 `import "kuake_sdk/..."` 全部改为 `import "github.com/zhangjingwei/kuake_cli/..."`。
+
+### 构建、发布与文档
+
+- **构建与发布**：`build.sh` 在 `dist/` 中随版本打包 OpenClaw 技能目录 `openclaw/kuake_skill`（默认 `kuake_skill-<版本>.zip`；若无 `zip` 命令则生成 `kuake_skill-<版本>.tar.gz`）；构建产物列表使用 `ls -lhA` 以包含 `.env.example`
+- **发布脚本**：`push.sh` 将上述技能包作为 Release 附件上传，并移除已不存在的 `openclaw/DEPLOYMENT.md`、`openclaw/SKILL.md` 引用；若缺少技能包则重新执行 `./build.sh`
+- **文档**：OpenClaw 相关说明收敛为「预编译 `kuake` + PATH + 技能目录」的普通用户路径；修复 `docs/cli.md` 中失效链接，README 文档表与功能描述同步
+
+## v1.4.3
+
+- **SDK 健壮性与校验（OpenSpec `robustness-refactor`）**
+  - 新增 `sdk/validation`：链式校验器、分页与路径安全（含 `ValidPathResult`）、默认值注入、`crypto/rand` 安全随机数、统一错误码与中文化校验消息
+  - `UploadFile` / `DownloadFile` 对远端路径做规范化与安全校验；分享列表类方法分页与排序入参校验；CLI 经 `cmd/validation` 安全解析分页与 JSON 路径
+
 ## v1.4.2
 
 - **SDK 路径与列表**
   - 修复 `listByFid` 翻页：仅以本页条数是否满页决定是否继续，避免依赖不可靠的 `total` 导致列表缺项
   - Windows 下远程路径统一按 POSIX 处理：`GetFileInfo` / `UploadFile` 使用 `path.Base` 解析远端路径；`GetFileInfo` 列表回退分支使用 `path.Join` 拼接子路径
   - `listByFid` 兼容 JSON 将 `fid` 解析为 `float64` 的情况
+- **下载（OSS 直链鉴权）**
+  - `DownloadFile` 对下载 URL 的 GET 请求补充与网盘 Web 页一致的请求头（如 `User-Agent`、`Referer`、`Sec-Fetch-*`、`Accept`/`Cache-Control` 等），并设置由客户端解析得到的完整 `Cookie` 头；下载使用独立 `http.Client` 且 Transport **启用 HTTP/2**，与主 API 客户端（强制 HTTP/1.1）分离，减轻 OSS 回调侧 **HTTP 403** / `RequestDeniedByCallback` 类失败（见 `buglist.txt` ISSUE-006）。
+  - 若 `access_tokens` 仍仅为不完整片段（例如仅 `__pus`），仍可能 403；需使用浏览器 `pan.quark.cn` 复制的整段 Cookie（调试模式下见 `DownloadFile` 相关提示）。
 - **测试与记录**
-  - 新增可选端到端回归 `TestE2E_Regression_CoreFlow`（`E2E_REGRESSION=1` 或 `INTEGRATION_TEST=1`，配置见 `KUAKE_E2E_CONFIG`）
+  - 新增可选端到端回归 `TestE2E_Regression_CoreFlow`（`E2E_REGRESSION=1` 或 `INTEGRATION_TEST=1`；凭证为 `KUAKE_COOKIE` 或 `KUAKE_PUS`/`KUAKE_PUUS`，与 CLI 一致）
   - 问题与回归说明见仓库根目录 `buglist.txt`
 
 ## v1.4.1
@@ -23,8 +55,8 @@
 - **OpenClaw 技能集成**
   - 新增 kuake OpenClaw 技能支持
   - 添加环境变量 `KUAKE_COOKIE` 支持，符合 OpenClaw 标准配置方式
-  - 认证优先级：`-cookies` 参数 > 环境变量 `KUAKE_COOKIE` > 配置文件
-  - 支持通过 `KUAKE_PATH` 环境变量指定完整路径，不依赖 PATH 检测
+  - 认证优先级：`-cookies` 参数 > 环境变量 `KUAKE_COOKIE` > 配置文件（**历史记载有误**，已于 **v1.4.4** 更正：`KUAKE_COOKIE` trim 后非空优先，见该版本 BREAKING）
+  - 支持通过 `KUAKE_PATH` 环境变量指定完整路径，不依赖 PATH 检测（**历史记载有误**，`kuake` 不读取 `KUAKE_PATH`；请使用 PATH，见 **v1.4.4** BREAKING）
   - 优化 OpenClaw 技能文档，添加 fallback 逻辑说明
   - 简化部署文档，提供更清晰的配置选项
 

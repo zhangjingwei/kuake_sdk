@@ -44,4 +44,10 @@ When triggered:
 
 ## Prerequisites
 
-Ensure `kuake` is installed and available in your system's PATH. If not available, build it from this repository using `go build -o kuake main.go`.
+For typical OpenClaw use:
+
+1. Install the **published `kuake` binary** for your OS from the project [Releases](https://github.com/zhangjingwei/kuake_cli/releases) page, and ensure it is on the **same machine’s `PATH`** where OpenClaw runs shell/`exec` for the agent (check with `kuake version` or `kuake -v`).
+2. Configure Quark credentials the way your OpenClaw setup expects (commonly environment variable `KUAKE_COOKIE`; details in the project CLI docs).
+3. Load this skill by pointing OpenClaw at the folder that contains this `SKILL.md` (see your OpenClaw `skills.load.extraDirs` or equivalent). No project checkout or compiler is required on that machine.
+
+If `kuake` is not found, help the user add the install folder to `PATH` or call `kuake` by full path. The binary does not read `KUAKE_PATH`; only `PATH` or an explicit path to `kuake` applies.
