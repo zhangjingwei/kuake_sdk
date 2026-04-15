@@ -57,6 +57,9 @@ release.yml
 cmd/config.json
 tip.txt
 
+# 本地问题/回归笔记（不纳入版本库）
+buglist.txt
+
 # Worktrees
 .worktrees/
 worktrees/
