@@ -53,6 +53,7 @@ storage/
 Thumbs.db
 RELEASE.md
 RELEASE_NOTES_*.md
+.kuake-release-notes-*.md
 release.yml
 cmd/config.json
 tip.txt
