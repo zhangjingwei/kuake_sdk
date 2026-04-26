@@ -7,26 +7,36 @@
 ## Requirements
 ### Requirement: 凭证来源优先级
 
-`kuake` SHALL 按固定顺序解析会话凭证：非空的 `KUAKE_COOKIE` 优先于命令行 `-cookies` / `--cookies`，再优先于配置文件中的 `Quark.access_tokens`。
+`kuake` SHALL 按固定顺序解析会话凭证（与 `sdk.ResolveEnvCookieString` + `cmd` 编排一致）：
 
-#### Scenario: 环境变量覆盖命令行与配置文件
+1. 非空的 **`KUAKE_COOKIE`**（trim 并规范化后仍非空）  
+2. 否则 **`KUAKE_PUS` / `KUAKE_PUUS`** 拼接后经相同规范化非空时，使用该结果（实现见 `sdk/quark_cookie_env.go`）  
+3. 否则非空的命令行 **`-cookies` / `--cookies`**（规范化后非空）  
+4. 否则从配置文件加载 **`Quark.access_tokens`**
 
-- **WHEN** 进程环境中 `KUAKE_COOKIE` 经 trim 后非空，且用户同时传入了非空的 `-cookies`，且配置文件中存在 `access_tokens`
-- **THEN** 客户端 MUST 使用 `KUAKE_COOKIE` 的值作为认证凭证
+#### Scenario: 整段环境变量覆盖拆分变量、命令行与配置文件
 
-#### Scenario: 无环境变量时使用命令行
+- **WHEN** `KUAKE_COOKIE` 经规范化后非空，且 `KUAKE_PUS` / `KUAKE_PUUS` 任一侧有值，或用户同时传入了非空的 `-cookies`，且配置文件中存在 `access_tokens`
+- **THEN** 客户端 MUST 使用 `KUAKE_COOKIE` 规范化后的值作为认证凭证
 
-- **WHEN** `KUAKE_COOKIE` 未设置或 trim 后为空，且用户传入了非空的 `-cookies`
+#### Scenario: 拆分环境变量覆盖命令行与配置文件
+
+- **WHEN** `KUAKE_COOKIE` 规范化后为空，且 `KUAKE_PUS` / `KUAKE_PUUS` **至少一侧**有值、经 `cookieFromSplitEnv` 拼接并 `NormalizeQuarkCookieInput` 后非空，且用户传入了非空的 `-cookies`，且配置文件中存在 `access_tokens`
+- **THEN** 客户端 MUST 使用拆分环境变量解析出的凭证，而非 `-cookies` 或配置文件
+
+#### Scenario: 无环境变量凭证时使用命令行
+
+- **WHEN** `ResolveEnvCookieString()` 等价于空（`KUAKE_COOKIE` 无效且 `KUAKE_PUS` / `KUAKE_PUUS` 均未提供有效拼接结果），且用户传入了规范化后非空的 `-cookies`
 - **THEN** 客户端 MUST 使用命令行传入的 cookie 值
 
 #### Scenario: 回退到配置文件
 
-- **WHEN** `KUAKE_COOKIE` 为空且未传入 `-cookies`
+- **WHEN** `ResolveEnvCookieString()` 为空且未传入规范化后非空的 `-cookies`
 - **THEN** 客户端 MUST 从配置文件加载 `access_tokens`，并满足「至少一个 token」的既有约束
 
 ### Requirement: Cookie 字符串规范化一致性
 
-从 `KUAKE_COOKIE` 与从 `-cookies` 获得的字符串 SHALL 经过相同的规范化规则（例如 `__pus=` 前缀与末尾分号处理），再传入客户端构造逻辑。
+从 `KUAKE_COOKIE`、由 `KUAKE_PUS`/`KUAKE_PUUS` 经 `ResolveEnvCookieString` 合成的字符串，以及从 `-cookies` 获得的字符串 SHALL 经过相同的规范化规则（例如裸 token 的 `__pus=` 前缀与末尾分号处理），再传入客户端构造逻辑。
 
 #### Scenario: 两路输入行为一致
 

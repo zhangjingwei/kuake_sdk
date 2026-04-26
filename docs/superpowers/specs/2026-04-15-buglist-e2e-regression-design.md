@@ -15,7 +15,7 @@
 ### 2.1 环境变量与配置
 
 - 启用回归：`E2E_REGRESSION=1` 或 `INTEGRATION_TEST=1`。
-- 配置文件：通过 `KUAKE_E2E_CONFIG` 指向含有效 Cookie/访问令牌的 `config.json`；或使用测试在模块/上级目录自动解析的 `config.json`（见 `e2e_regression_test.go`）。
+- 凭证：**仅**通过 `KUAKE_COOKIE` 或 `KUAKE_PUS`+`KUAKE_PUUS`（与 CLI 相同，见 `sdk.ResolveEnvCookieString`）；测试会尝试加载当前目录与上级目录的 `.env`。**不**再使用 `KUAKE_E2E_CONFIG`，也**不**从 `config.json` 读取会话（见 `sdk/e2e_regression_test.go` 文件头注释）。
 
 ### 2.2 命令
 
@@ -59,7 +59,7 @@ go test ./sdk -run TestE2E_Regression_CoreFlow -count=1 -v
 ## 4. 风险与边界
 
 - **网络与 OSS**：偶发失败不应直接推翻已修复结论；稳定复现才进入代码排查。
-- **配置一致性**：Windows 与 WSL 应使用同一逻辑账号；路径仅 `config.json` 位置可不同。
+- **配置一致性**：Windows 与 WSL 应使用同一逻辑账号与等价的 `KUAKE_COOKIE`（或 `KUAKE_PUS`/`KUAKE_PUUS`）配置；不依赖 `config.json` 提供 E2E 凭证。
 - **范围**：本设计 **不包含** 为 ISSUE-006 实现新的重试/鉴权逻辑；若需代码层修复，应另立变更说明。
 
 ## 5. 后续步骤（实现阶段）

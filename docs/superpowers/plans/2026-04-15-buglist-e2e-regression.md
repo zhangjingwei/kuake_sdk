@@ -6,7 +6,7 @@
 
 **Architecture:** 无 SDK 行为变更；执行顺序为先本机 Windows 验证、再在 WSL 中挂载同一仓库路径验证；两次均通过后一次性编辑 `buglist.txt` 写入「回归验证记录」并视结果更新 ISSUE-006；CHANGELOG 仅在发版或团队要求时追加。
 
-**Tech Stack:** Go `go test`、PowerShell（Windows）、Bash（WSL）、仓库内 `config.json` / `KUAKE_E2E_CONFIG`。
+**Tech Stack:** Go `go test`、PowerShell（Windows）、Bash（WSL）；E2E 凭证为 `KUAKE_COOKIE` 或 `KUAKE_PUS`+`KUAKE_PUUS`（及可选 `.env`），与 `sdk/e2e_regression_test.go` 一致。
 
 ---
 
@@ -27,32 +27,24 @@
 - Read: `sdk/e2e_regression_test.go`（确认开关与 config 解析）
 - Modify: 无（本步仅执行与记录）
 
-- [ ] **Step 1: 进入仓库根目录并确认配置可读**
+- [ ] **Step 1: 进入仓库根目录并确认凭证可用**
 
 在 **PowerShell** 中（将路径换成你的实际仓库路径）：
 
 ```powershell
 Set-Location D:\workspace\kuake_cli
-Test-Path .\config.json
-# 期望: True；若使用自定义路径，改为 Test-Path $env:KUAKE_E2E_CONFIG 的目标文件
+# 二选一：在环境中提供整段 Cookie，或与 .env.example 一致的 KUAKE_PUS / KUAKE_PUUS
+# 若使用仓库根 `.env`，测试会加载 cwd 与 `..\.env`（见 e2e_regression_test.go）
+if ($env:KUAKE_COOKIE) { "KUAKE_COOKIE set" } elseif ($env:KUAKE_PUS -or $env:KUAKE_PUUS) { "split env set" } else { "need credential in env or .env" }
 ```
 
 - [ ] **Step 2: 设置环境变量并运行测试**
 
-使用与有效登录一致的配置（二选一）：
-
-**A. 使用仓库根目录 `config.json`（测试会自动解析）：**
+与有效登录一致（示例：整段 Cookie；拆分变量见 `docs/cli.md` / `.env.example`）：
 
 ```powershell
 $env:E2E_REGRESSION = "1"
-go test ./sdk -run TestE2E_Regression_CoreFlow -count=1 -v
-```
-
-**B. 显式指定配置文件：**
-
-```powershell
-$env:E2E_REGRESSION = "1"
-$env:KUAKE_E2E_CONFIG = "D:\workspace\kuake_cli\config.json"
+$env:KUAKE_COOKIE = "<从浏览器复制的整段 Cookie，或已在 .env 中配置>"
 go test ./sdk -run TestE2E_Regression_CoreFlow -count=1 -v
 ```
 
@@ -90,17 +82,16 @@ go version
 
 ```bash
 cd /mnt/d/workspace/kuake_cli
-test -f config.json && echo OK
+# 确认 KUAKE_COOKIE 或 KUAKE_PUS/KUAKE_PUUS 已 export，或仓库根/上级存在含凭证的 .env
 ```
 
-若 `config.json` 仅在 Windows 用户目录，请复制一份到仓库内 **或** 在 WSL 中设置 `KUAKE_E2E_CONFIG` 为 **WSL 路径下可读的文件**（内容应与 Windows 侧等价、同一账号）。
+WSL 与 Windows 应使用**同一逻辑账号**的 Cookie（或等价拆分变量），在两侧分别 `export` / `$env:` 即可；**不**依赖 `config.json` 或 `KUAKE_E2E_CONFIG` 向本测试注入凭证。
 
 - [ ] **Step 2: 运行同一测试**
 
 ```bash
 export E2E_REGRESSION=1
-# 如需显式配置：
-# export KUAKE_E2E_CONFIG=/mnt/d/workspace/kuake_cli/config.json
+export KUAKE_COOKIE='...'   # 或与 Windows 侧等价的 .env
 go test ./sdk -run TestE2E_Regression_CoreFlow -count=1 -v
 ```
 
@@ -219,7 +210,7 @@ git commit -m "docs: changelog note for E2E regression verification"
 
 - [ ] **Step 1: 对照检查**
 
-打开 `sdk/e2e_regression_test.go` 文件头注释（约 L13–22），确认 README/cli 中关于 `E2E_REGRESSION`、`INTEGRATION_TEST`、`KUAKE_E2E_CONFIG` 的描述一致。
+打开 `sdk/e2e_regression_test.go` 文件头注释（约 L15–25），确认 README/cli 中关于 `E2E_REGRESSION`、`INTEGRATION_TEST`、`KUAKE_COOKIE` / `KUAKE_PUS`+`KUAKE_PUUS`、**不**使用 `KUAKE_E2E_CONFIG` 与 `config.json` 凭证的描述一致。
 
 - [ ] **Step 2: 若有差异，做最小修改并 commit**
 

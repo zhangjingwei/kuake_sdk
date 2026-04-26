@@ -1,5 +1,7 @@
 ## ADDED Requirements
 
+> **归档**：本节为变更提案时的草案快照。**当前有效约定以仓库内 [`openspec/specs/cli-environment-config/spec.md`](../../../../../specs/cli-environment-config/spec.md) 为准**（含 `KUAKE_PUS` / `KUAKE_PUUS` 优先级与 E2E 凭证说明等后续修订）。
+
 ### Requirement: 凭证来源优先级
 
 `kuake` SHALL 按固定顺序解析会话凭证：非空的 `KUAKE_COOKIE` 优先于命令行 `-cookies` / `--cookies`，再优先于配置文件中的 `Quark.access_tokens`。

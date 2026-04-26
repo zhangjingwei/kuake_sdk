@@ -2,6 +2,8 @@
 
 ## 1. 凭证优先级（目标顺序）
 
+**（归档说明）** 本节为变更当时草案；当前实现已在 `KUAKE_COOKIE` 与 `-cookies` 之间加入 **`KUAKE_PUS` / `KUAKE_PUUS`** 拼接路径，并以仓库内 **`openspec/specs/cli-environment-config/spec.md`** 为单一事实来源。
+
 ```
 KUAKE_COOKIE（trim 后非空）
         │
@@ -31,7 +33,7 @@ KUAKE_COOKIE（trim 后非空）
 | `KUAKE_COOKIE` | `cmd` | 会话凭证 | 优先级见上 |
 | `KUake_DEBUG` | `sdk`（QuarkClient） | 调试 | 名称与 `KUAKE_*` 不一致，文档写清 |
 | `KUAKE_UPLOAD_PARALLEL` | 待本 change 结论 | 上传并行度 | 与实现同步后填入 |
-| `KUAKE_E2E_CONFIG` / `E2E_REGRESSION` / `INTEGRATION_TEST` | `go test` | 测试专用 | 明确非 CLI 二进制行为 |
+| `E2E_REGRESSION` / `INTEGRATION_TEST` | `go test ./sdk` | 启用 E2E 回归 | 凭证为 `KUAKE_COOKIE` 或 `KUAKE_PUS`+`KUAKE_PUUS`；**不**使用 `KUAKE_E2E_CONFIG`（见 `docs/cli.md`） |
 
 ## 3. `KUAKE_UPLOAD_PARALLEL` 决策分支
 

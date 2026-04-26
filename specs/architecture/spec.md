@@ -89,10 +89,10 @@ Kuake 是一个以 Go 构建的命令行工具，提供夸克网盘操作能力�
 
 配置模块负责：
 
-- 解析并加载本地 `config.json`（当 CLI 未从环境变量获得有效 Cookie 时）。
+- 解析并加载本地 `config.json`（当 CLI 在 `ResolveEnvCookieString` 与 `-cookies` 均无效时，从 `Quark.access_tokens` 读取；字段形态见 `docs/cli.md`）。
 - 提供默认配置路径 `config.json`。
 - 校验 `config.json` 中必需项（如 `access_tokens`）。
-- 提供测试环境下的临时配置加载机制。
+- `LoadConfig` / `SaveConfig` 供 CLI 与需文件形态配置的测试使用；**E2E 回归** `TestE2E_Regression_CoreFlow` 的凭证仅来自环境变量（及测试内加载的 `.env`），见 `docs/cli.md`。
 
 ## 5. 核心组件交互关系
 
