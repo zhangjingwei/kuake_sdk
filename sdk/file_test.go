@@ -67,6 +67,48 @@ func TestNormalizePath(t *testing.T) {
 	}
 }
 
+func TestDecodeQuarkFileName(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{
+			name: "html apostrophe entity",
+			in:   "[HKG][Queen&#39;s Blade][BDrip][02][BIG5][720P].mp4.7z",
+			want: "[HKG][Queen's Blade][BDrip][02][BIG5][720P].mp4.7z",
+		},
+		{
+			name: "url encoded apostrophe",
+			in:   "[HKG][Queen%27s Blade][BDrip][02][BIG5][720P].mp4.7z",
+			want: "[HKG][Queen's Blade][BDrip][02][BIG5][720P].mp4.7z",
+		},
+		{
+			name: "raw at sign",
+			in:   "release@team.txt",
+			want: "release@team.txt",
+		},
+		{
+			name: "url encoded at sign",
+			in:   "release%40team.txt",
+			want: "release@team.txt",
+		},
+		{
+			name: "invalid percent escape falls back",
+			in:   "100% complete.txt",
+			want: "100% complete.txt",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := decodeQuarkFileName(tt.in); got != tt.want {
+				t.Fatalf("decodeQuarkFileName(%q) = %q, want %q", tt.in, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestNormalizeRootDir(t *testing.T) {
 	tests := []struct {
 		name string

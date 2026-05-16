@@ -64,13 +64,14 @@ func TestInRange(t *testing.T) {
 
 func TestValidPath(t *testing.T) {
 	tests := []struct {
-		name    string
-		path    string
-		wantErr bool
+		name     string
+		path     string
+		wantErr  bool
 		wantCode string // when wantErr; empty means do not assert code
 	}{
 		{"valid path", "/home/user/file.txt", false, ""},
 		{"valid Windows path", "C:\\Users\\test", false, ""},
+		{"valid path with at sign", "/home/user/release@team.txt", false, ""},
 		{"filename with .. in name is not parent segment", "/photos/file..jpg", false, ""},
 		{"path with parent reference", "/home/../etc/passwd", true, "FILE_PATH_TRAVERSAL"},
 		{"path with double dots", "../../../secret", true, "FILE_PATH_TRAVERSAL"},

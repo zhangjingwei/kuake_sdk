@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"hash"
+	"html"
 	"io"
 	"mime"
 	"net/http"
@@ -447,6 +448,14 @@ func normalizePath(path string) string {
 		path = strings.TrimSuffix(path, "/")
 	}
 	return path
+}
+
+func decodeQuarkFileName(name string) string {
+	name = html.UnescapeString(name)
+	if decoded, err := url.PathUnescape(name); err == nil {
+		name = decoded
+	}
+	return name
 }
 
 // normalizeRootDir 将根目录路径转换为 API 所需的 FID "0"
@@ -2286,6 +2295,7 @@ func (qc *QuarkClient) listByFid(pdirFid string, parentPath ...string) (*Standar
 
 				// 映射 file_name (文件名)
 				if name, ok := itemMap["file_name"].(string); ok {
+					name = decodeQuarkFileName(name)
 					fileInfo.Name = name
 					// 构建文件路径：网盘路径为 POSIX，使用 path.Join，避免 Windows 下 filepath 产生反斜杠
 					if basePath == "/" {
@@ -2459,11 +2469,11 @@ func (qc *QuarkClient) GetFileInfo(remotePath string, skipPathConversion ...bool
 	}
 
 	// 远程路径始终为 POSIX 斜杠；Windows 上 filepath.Base 不会按 / 分割，必须用 path.Base
-	fileName := path.Base(remotePath)
+	fileName := decodeQuarkFileName(path.Base(remotePath))
 	if fileName == "." || fileName == "/" {
 		parts := strings.Split(strings.Trim(remotePath, "/"), "/")
 		if len(parts) > 0 && parts[len(parts)-1] != "" {
-			fileName = parts[len(parts)-1]
+			fileName = decodeQuarkFileName(parts[len(parts)-1])
 		} else {
 			fileName = ""
 		}
@@ -2575,6 +2585,7 @@ func (qc *QuarkClient) GetFileInfo(remotePath string, skipPathConversion ...bool
 						fileInfo.Fid = fid
 					}
 					if name, ok := itemMap["file_name"].(string); ok {
+						name = decodeQuarkFileName(name)
 						fileInfo.Name = name
 						if parentPathForList == "/" {
 							fileInfo.Path = "/" + name
