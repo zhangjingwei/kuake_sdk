@@ -319,12 +319,12 @@ git commit -m "docs(cli): sync embedded usage with env auth and upload parallel"
 
 | 变量名 | 谁读取 | 用途 | 说明 |
 |--------|--------|------|------|
-| `KUAKE_COOKIE` | `kuake`（cmd） | 会话 Cookie / access token | **优先级最高**（trim 后非空则覆盖 `-cookies` 与配置文件中的 token） |
-| `-cookies` / `--cookies` | `kuake`（cmd） | 同上 | 当 `KUAKE_COOKIE` 为空时使用；仍会通过 CLI 做与 env 相同的规范化（`__pus=`、分号） |
+| `KUAKE_COOKIE` | `kuake`（cmd） | 整段会话 Cookie | **优先于**拆分变量、`-cookies`、配置文件（trim 并规范化后非空则生效） |
+| `KUAKE_PUS` / `KUAKE_PUUS` | `kuake`（cmd） | `__pus` / `__puus` 裸值 | 仅当 `KUAKE_COOKIE` 无效时拼接后规范化；见 `docs/cli.md` |
+| `-cookies` / `--cookies` | `kuake`（cmd） | 同上 | 当 `ResolveEnvCookieString()` 为空时使用；规范化规则与 env 一致 |
 | `KUAKE_UPLOAD_PARALLEL` | `kuake`（cmd，`upload`） | 上传并行度 1–16 | 未传 `--max_upload_parallel` 时读取；**命令行 flag 优先于本变量** |
 | `KUake_DEBUG` | SDK（`QuarkClient`） | 调试输出 | 设为 `1` 开启；变量名大小写以代码为准 |
-| `KUAKE_E2E_CONFIG` | `go test ./sdk` | E2E 配置文件路径 | 非 `kuake` 二进制行为 |
-| `E2E_REGRESSION` / `INTEGRATION_TEST` | `go test` | 启用集成/E2E | 非日常 CLI |
+| `E2E_REGRESSION` / `INTEGRATION_TEST` | `go test ./sdk` | 启用 `TestE2E_Regression_CoreFlow` | 凭证仅 `KUAKE_COOKIE` 或 `KUAKE_PUS`+`KUAKE_PUUS`；**不**读取 `KUAKE_E2E_CONFIG` / `config.json` |
 
 集成方（如 OpenClaw）需保证 **`kuake` 在 `PATH` 中**；`kuake` **不**读取 `KUAKE_PATH` 环境变量。
 ```
