@@ -70,7 +70,7 @@ func TestE2E_Regression_CoreFlow(t *testing.T) {
 	if cookie == "" {
 		t.Skip("No credentials: set KUAKE_COOKIE or KUAKE_PUS/KUAKE_PUUS, or place .env in cwd or parent (loaded before this check).")
 	}
-	client := NewQuarkClient(DEFAULT_CONFIG_PATH, cookie)
+	client := NewQuarkClient(cookie)
 	if client == nil {
 		t.Fatal("NewQuarkClient returned nil")
 	}

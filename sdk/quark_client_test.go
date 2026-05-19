@@ -1,87 +1,46 @@
 package sdk
 
 import (
-	"os"
-	"path/filepath"
 	"testing"
 )
 
 func TestNewQuarkClient(t *testing.T) {
 	tests := []struct {
-		name        string
-		configPath  string
-		setupConfig func() string
-		wantPanic   bool
-		cleanup     func(string)
+		name      string
+		cookie    string
+		wantPanic bool
 	}{
 		{
-			name:       "create client with valid config",
-			configPath: "",
-			setupConfig: func() string {
-				tmpFile := filepath.Join(t.TempDir(), "config.json")
-				config := &Config{
-					Quark: struct {
-						AccessTokens []string `json:"access_tokens"`
-					}{
-						AccessTokens: []string{"test_token=value1; test_token2=value2;"},
-					},
-				}
-				SaveConfig(tmpFile, config)
-				return tmpFile
-			},
+			name:      "create client with cookie",
+			cookie:    "test_token=value1; test_token2=value2;",
 			wantPanic: false,
-			cleanup: func(path string) {
-				os.Remove(path)
-			},
 		},
 		{
-			name:       "create client with empty tokens",
-			configPath: "",
-			setupConfig: func() string {
-				tmpFile := filepath.Join(t.TempDir(), "config_empty.json")
-				config := &Config{
-					Quark: struct {
-						AccessTokens []string `json:"access_tokens"`
-					}{
-						AccessTokens: []string{},
-					},
-				}
-				SaveConfig(tmpFile, config)
-				return tmpFile
-			},
+			name:      "panic with no cookie",
+			cookie:    "",
 			wantPanic: true,
-			cleanup: func(path string) {
-				os.Remove(path)
-			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			configPath := tt.configPath
-			if tt.setupConfig != nil {
-				tmpPath := tt.setupConfig()
-				if tmpPath != "" {
-					configPath = tmpPath
-				}
-			}
-
 			defer func() {
 				r := recover()
 				if (r != nil) != tt.wantPanic {
 					t.Errorf("NewQuarkClient() panic = %v, wantPanic %v", r, tt.wantPanic)
 				}
-				if tt.cleanup != nil {
-					tt.cleanup(configPath)
-				}
 			}()
 
-			client := NewQuarkClient(configPath)
-			if client == nil {
-				t.Errorf("NewQuarkClient() returned nil")
+			var client *QuarkClient
+			if tt.cookie == "" {
+				client = NewQuarkClient()
+			} else {
+				client = NewQuarkClient(tt.cookie)
 			}
-
 			if !tt.wantPanic {
+				if client == nil {
+					t.Fatalf("NewQuarkClient() returned nil")
+				}
 				if client.baseURL == "" {
 					t.Errorf("NewQuarkClient() client has empty baseURL")
 				}
@@ -312,26 +271,11 @@ func TestConvertToFileInfo_InvalidReturnsNil(t *testing.T) {
 
 // createTestClient 创建测试用的客户端
 func createTestClient(t *testing.T) *QuarkClient {
-	tmpFile := filepath.Join(t.TempDir(), "test_config.json")
-	config := &Config{
-		Quark: struct {
-			AccessTokens []string `json:"access_tokens"`
-		}{
-			AccessTokens: []string{"test_token=value1; test_token2=value2;"},
-		},
-	}
-
-	if err := SaveConfig(tmpFile, config); err != nil {
-		t.Fatalf("Failed to create test config: %v", err)
-	}
-
 	defer func() {
 		if r := recover(); r != nil {
 			t.Fatalf("Failed to create client: %v", r)
 		}
 	}()
-
-	client := NewQuarkClient(tmpFile)
-	return client
+	return NewQuarkClient("test_token=value1; test_token2=value2;")
 }
 

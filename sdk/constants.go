@@ -7,11 +7,6 @@ const (
 	DRIVE_H_DOMAIN = "https://drive-h.quark.cn"  // save_share_file部分请求
 )
 
-// 配置相关常量
-const (
-	DEFAULT_CONFIG_PATH = "config.json" // 默认配置文件路径
-)
-
 // 用户信息
 const (
 	USER_INFO   = "/account/info"

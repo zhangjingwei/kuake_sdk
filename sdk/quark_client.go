@@ -2,12 +2,10 @@ package sdk
 
 import (
 	"bytes"
-	"crypto/rand"
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
-	"math/big"
 	"net"
 	"net/http"
 	"net/url"
@@ -18,41 +16,14 @@ import (
 	"github.com/zhangjingwei/kuake_cli/sdk/validation"
 )
 
-// NewQuarkClient 创建夸克网盘客户端（支持多个 token）
-// configPath: 配置文件路径，如果为空则使用默认路径 DEFAULT_CONFIG_PATH
-// cookies: 可选的 cookies 字符串，如果提供则直接使用，否则从配置文件读取
-func NewQuarkClient(configPath string, cookies ...string) *QuarkClient {
-	var accessTokens []string
+// NewQuarkClient creates a Quark Drive client.
+// Panics if no cookie is provided — set KUAKE_COOKIE or KUAKE_PUS+KUAKE_PUUS.
+func NewQuarkClient(cookies ...string) *QuarkClient {
 	var initialToken string
-	var initialIdx int
-
-	// 如果提供了 cookies 参数，直接使用
 	if len(cookies) > 0 && cookies[0] != "" {
-		accessTokens = []string{cookies[0]}
 		initialToken = cookies[0]
-		initialIdx = 0
 	} else {
-		// 否则从配置文件加载
-		config, err := LoadConfig(configPath)
-		if err != nil {
-			panic("failed to load config file")
-		}
-
-		accessTokens = config.Quark.AccessTokens
-
-		if len(accessTokens) == 0 {
-			panic("at least one access token is required")
-		}
-
-		// 使用 crypto/rand 安全地随机选择一个 token 作为初始 token
-		n, err := rand.Int(rand.Reader, big.NewInt(int64(len(accessTokens))))
-		if err != nil {
-			// 如果随机失败，回退到第一个 token（ deterministic fallback）
-			initialIdx = 0
-		} else {
-			initialIdx = int(n.Int64())
-		}
-		initialToken = accessTokens[initialIdx]
+		panic("KUAKE_COOKIE is not set; export KUAKE_COOKIE=<cookie> before starting")
 	}
 
 	// 从环境变量读取调试开关
@@ -63,8 +34,8 @@ func NewQuarkClient(configPath string, cookies ...string) *QuarkClient {
 	client := &QuarkClient{
 		baseURL:          DRIVE_DOMAIN,    // 使用 DRIVE_DOMAIN 常量
 		accessToken:      initialToken,    // 当前使用的 token
-		accessTokens:     accessTokens,    // 所有可用的 tokens
-		currentTokenIdx:  initialIdx,      // 当前 token 索引
+		accessTokens:     []string{initialToken},
+		currentTokenIdx:  0,
 		authCheckTimeout: 5 * time.Minute, // 默认5分钟内缓存认证检查结果
 		failedTokens:     make(map[int]bool),
 		Debug:            isDebugEnv, // 从环境变量读取，默认关闭

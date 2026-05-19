@@ -35,8 +35,7 @@ func main() {
 		os.Exit(ExitError)
 	}
 
-	// 解析命令行参数，支持 -c/--config 和 -cookies 参数
-	configPath := sdk.DEFAULT_CONFIG_PATH
+	// 解析命令行参数，支持 -cookies 参数
 	var cookies string
 	var command string
 	var args []string
@@ -48,22 +47,6 @@ func main() {
 		if skipNext {
 			skipNext = false
 			continue
-		}
-
-		// 检查是否是配置文件参数
-		if arg == "-c" || arg == "--config" {
-			if i+1 < len(os.Args) {
-				configPath = os.Args[i+1]
-				skipNext = true
-				continue
-			} else {
-				outputJSON(&CLIResult{
-					Success: false,
-					Code:    "INVALID_ARGS",
-					Message: fmt.Sprintf("%s requires a config file path", arg),
-				})
-				os.Exit(ExitError)
-			}
 		}
 
 		// 检查是否是 cookies 参数
@@ -112,7 +95,7 @@ func main() {
 		os.Exit(ExitError)
 	}
 
-	loadDotEnvFiles(configPath)
+	loadDotEnvFiles()
 
 	// 创建客户端
 	var client *sdk.QuarkClient
@@ -126,18 +109,18 @@ func main() {
 			os.Exit(ExitError)
 		}
 	}()
-	// 优先级：KUAKE_COOKIE（整段）> KUAKE_PUS + KUAKE_PUUS 拼接 > -cookies/--cookies > 配置文件（BREAKING，见 CHANGELOG）
+	// 优先级：KUAKE_COOKIE（整段）> KUAKE_PUS + KUAKE_PUUS 拼接 > -cookies/--cookies
 	if norm := sdk.ResolveEnvCookieString(); norm != "" {
-		client = sdk.NewQuarkClient(configPath, norm)
+		client = sdk.NewQuarkClient(norm)
 	} else if cookies != "" {
 		cookies = normalizeQuarkCookieInput(cookies)
 		if cookies == "" {
-			client = sdk.NewQuarkClient(configPath)
+			client = sdk.NewQuarkClient()
 		} else {
-			client = sdk.NewQuarkClient(configPath, cookies)
+			client = sdk.NewQuarkClient(cookies)
 		}
 	} else {
-		client = sdk.NewQuarkClient(configPath)
+		client = sdk.NewQuarkClient()
 	}
 
 	// 执行命令
@@ -214,15 +197,14 @@ Usage:
   kuake [options] <command> [arguments...]
 
 Options:
-  -c, --config <path>          Specify config file path (default: config.json)
   -cookies, --cookies <value>  Specify cookie value directly (only when KUAKE_COOKIE empty after trim;
-                                adds __pus= prefix; bypasses config file when effective source is -cookies)
+                                adds __pus= prefix)
   -v, --version                Show version information
 
 Auth:
-  Env cookie: full KUAKE_COOKIE (after trim+normalize) OR split KUAKE_PUS + KUAKE_PUUS (values only, no __pus=/__puus= prefix), then -cookies/--cookies, then config file.
+  Env cookie: full KUAKE_COOKIE (after trim+normalize) OR split KUAKE_PUS + KUAKE_PUUS (values only, no __pus=/__puus= prefix), then -cookies/--cookies.
   BREAKING; see CHANGELOG.
-  Optional .env: if .env exists in cwd or next to the -c/--config file directory, load it before creating the client (does not override existing env vars). Set KUAKE_LOAD_DOTENV=0 to disable.
+  Optional .env: if .env exists in cwd, load it before creating the client (does not override existing env vars). Set KUAKE_LOAD_DOTENV=0 to disable.
 
 Commands:
   user                        Get user information
@@ -272,7 +254,7 @@ Examples:
   kuake share-save "https://pan.quark.cn/s/xxx"
   kuake share-save "https://pan.quark.cn/s/xxx" "1234" "/folder"
   
-  # Using -cookies parameter (bypasses config file, only cookie value needed):
+  # Using -cookies parameter:
   kuake -cookies "your_cookie_value_here" user
   kuake -cookies "your_cookie_value_here" upload "file.txt" "/folder/file.txt"
 
@@ -300,8 +282,7 @@ Notes:
     env is set (1-16) it is used when the flag is omitted (default 4)
   - Results output as JSON to stdout
   - Exit code: 0=success, 1=failure
-  - When the effective credential source is -cookies (and KUAKE_COOKIE is empty after trim), config
-    tokens are not loaded; if KUAKE_COOKIE is set (non-empty after trim), it wins over -cookies
+  - If KUAKE_COOKIE is set (non-empty after trim), it wins over -cookies
   - In pipe mode, each input line should be a JSON object with "path" or "fid" field
   - Use --stream with list command to output one JSON per line for pipeline processing
 `)
