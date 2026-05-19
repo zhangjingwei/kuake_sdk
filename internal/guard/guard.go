@@ -110,3 +110,110 @@ func (g *Guard) CheckDownloadDir(localSubPath string) error {
 func (g *Guard) DownloadDir() string {
 	return g.downloadDir
 }
+
+// CheckRemoteFileName validates a file name returned by the remote API before
+// using it as a local on-disk filename. Rejects empty, path separators, and "..".
+// The remote name is treated as untrusted input — a hostile or compromised
+// remote could otherwise escape the download sandbox via "../../etc/passwd".
+func (g *Guard) CheckRemoteFileName(name string) error {
+	if name == "" {
+		return fmt.Errorf("remote file_name is empty")
+	}
+	if strings.ContainsRune(name, '/') || strings.ContainsRune(name, '\\') {
+		return fmt.Errorf("remote file_name %q contains a path separator", name)
+	}
+	if name == ".." || strings.Contains(name, "..") {
+		return fmt.Errorf("remote file_name %q contains '..'", name)
+	}
+	return nil
+}
+
+// uploadDenyPrefixes are absolute path prefixes that uploads must not originate
+// from, regardless of file extension. These are system locations whose contents
+// have no legitimate reason to leave the host via an LLM-driven upload tool.
+//
+// /var/ is enumerated by sub-directory (not blanket-blocked) so macOS user-space
+// temp paths like /var/folders/... and /var/tmp/ remain usable.
+var uploadDenyPrefixes = []string{
+	"/etc/",
+	"/proc/",
+	"/sys/",
+	"/dev/",
+	"/root/",
+	"/var/log/",
+	"/var/lib/",
+	"/var/spool/",
+	"/var/db/",
+	"/var/root/",
+	"/private/etc/",
+	"/private/var/log/",
+	"/private/var/lib/",
+	"/private/var/db/",
+	"/private/var/root/",
+}
+
+// uploadDenySegments are path segments that, when present anywhere in the
+// resolved absolute path, indicate the file lives inside a credential or
+// secret-management directory.
+var uploadDenySegments = []string{
+	"/.ssh/",
+	"/.aws/",
+	"/.gnupg/",
+	"/.kube/",
+	"/.docker/",
+	"/.config/gh/",
+}
+
+// uploadDenyBasenames are file basenames associated with private keys, shell
+// history, or other credentials.
+var uploadDenyBasenames = map[string]bool{
+	"id_rsa":          true,
+	"id_ed25519":      true,
+	"id_dsa":          true,
+	"id_ecdsa":        true,
+	".netrc":          true,
+	".pgpass":         true,
+	".my.cnf":         true,
+	".bash_history":   true,
+	".zsh_history":    true,
+	".python_history": true,
+}
+
+// CheckUploadLocalPath rejects local paths that point at well-known sensitive
+// locations. The path is resolved to its absolute, symlink-followed form before
+// matching, so symlinks pointing at protected locations are also blocked.
+//
+// Hardcoded blacklist by design — the threat model is an LLM tricked into
+// uploading SSH keys or system files, and we want minimum protection that
+// applies without operator configuration.
+func (g *Guard) CheckUploadLocalPath(localPath string) error {
+	abs, err := filepath.Abs(localPath)
+	if err != nil {
+		return fmt.Errorf("invalid local_path: %w", err)
+	}
+	abs = filepath.Clean(abs)
+
+	// Resolve symlinks so "harmless.txt -> /etc/passwd" can't slip through.
+	// If the file does not exist yet, EvalSymlinks errors — fall back to the
+	// lexical absolute path in that case (still useful for the prefix check).
+	if real, err := filepath.EvalSymlinks(abs); err == nil {
+		abs = real
+	}
+
+	matchPath := filepath.ToSlash(abs)
+
+	for _, prefix := range uploadDenyPrefixes {
+		if matchPath == strings.TrimSuffix(prefix, "/") || strings.HasPrefix(matchPath, prefix) {
+			return fmt.Errorf("local_path %q points at a protected system path", localPath)
+		}
+	}
+	for _, seg := range uploadDenySegments {
+		if strings.Contains(matchPath, seg) {
+			return fmt.Errorf("local_path %q is inside a protected credential directory", localPath)
+		}
+	}
+	if uploadDenyBasenames[filepath.Base(matchPath)] {
+		return fmt.Errorf("local_path basename %q is protected", filepath.Base(matchPath))
+	}
+	return nil
+}
