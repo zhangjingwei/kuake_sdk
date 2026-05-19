@@ -1,0 +1,55 @@
+# Release: 推送 v* 形式的 tag 时触发，运行 ./build.sh 产出多平台 kuake / kuake-mcp 二进制 + OpenClaw 技能包，
+# 作为 GitHub Release 的附件上传；release 说明默认由 GitHub 基于 PR/commit 自动生成，详细变更见 docs/CHANGELOG.md。
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-and-release:
+    name: Build all platforms and publish release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Verify tag matches cmd/main.go Version
+        run: |
+          tag="${GITHUB_REF#refs/tags/}"
+          file_version=$(sed -n 's/.*var Version = "\([^"]*\)".*/\1/p' cmd/main.go | head -1)
+          echo "tag=$tag  file_version=$file_version"
+          if [ "$tag" != "$file_version" ]; then
+            echo "::error::tag $tag does not match cmd/main.go Version $file_version"
+            exit 1
+          fi
+
+      - name: Build all platforms
+        run: |
+          chmod +x build.sh
+          ./build.sh
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          body: |
+            See [docs/CHANGELOG.md](docs/CHANGELOG.md) for the full notes for this version.
+          files: |
+            dist/kuake-v*
+            dist/kuake-mcp-*
+            dist/kuake_skill-*.zip
+            dist/.env.example
+          fail_on_unmatched_files: true
