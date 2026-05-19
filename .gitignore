@@ -61,6 +61,9 @@ tip.txt
 # 本地问题/回归笔记（不纳入版本库）
 buglist.txt
 
+# Local MCP server config (may contain KUAKE_COOKIE)
+.mcp.json
+
 # Worktrees
 .worktrees/
 worktrees/

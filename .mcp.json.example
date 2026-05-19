@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "quark": {
+      "command": "/path/to/dist/kuake-mcp-darwin-arm64",
+      "env": {
+        "KUAKE_COOKIE": "YOUR_COOKIE_HERE",
+        "KUAKE_DENY_OPS": "",
+        "KUAKE_DENY_PATHS": "",
+        "KUAKE_DENY_EXTS": ".env:.key:.pem",
+        "KUAKE_MAX_UPLOAD_MB": "200",
+        "KUAKE_DOWNLOAD_DIR": "/tmp/quark-downloads"
+      }
+    }
+  }
+}

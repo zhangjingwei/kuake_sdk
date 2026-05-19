@@ -85,6 +85,16 @@ build "linux" "arm64" "" ""
 build "darwin" "amd64" "" ""
 build "windows" "amd64" ".exe" ""
 
+# kuake-mcp MCP server
+echo -e "${YELLOW}Building kuake-mcp...${NC}"
+CGO_ENABLED=0 GOOS=linux   GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o dist/kuake-mcp-linux-amd64       ./mcp
+CGO_ENABLED=0 GOOS=linux   GOARCH=arm64 go build -trimpath -ldflags="-s -w" -o dist/kuake-mcp-linux-arm64       ./mcp
+CGO_ENABLED=0 GOOS=darwin  GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o dist/kuake-mcp-darwin-amd64      ./mcp
+CGO_ENABLED=0 GOOS=darwin  GOARCH=arm64 go build -trimpath -ldflags="-s -w" -o dist/kuake-mcp-darwin-arm64      ./mcp
+CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o dist/kuake-mcp-windows-amd64.exe ./mcp
+echo -e "${GREEN}✓ kuake-mcp binaries built${NC}"
+echo ""
+
 # 复制环境变量模板到 dist（与仓库根 .env.example 一致）
 echo -e "${YELLOW}Copying .env.example to ${BUILD_DIR}/...${NC}"
 if [ -f ".env.example" ]; then
