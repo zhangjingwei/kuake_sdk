@@ -2,6 +2,31 @@
 
 ## [Unreleased]
 
+## v1.5.0
+
+### BREAKING
+
+- **`config.json` 支持已移除**。`sdk.LoadConfig` / `sdk.SaveConfig` 删除；`sdk.NewQuarkClient` 签名改为 `NewQuarkClient(cookies ...string)` —— 不再接受 `configPath`，且无 cookie 时直接 panic。CLI 的 `-c` / `--config` 选项移除；`.env` 自动加载也不再读取「`-c` 同目录」那一份，仅从当前工作目录加载。原 `Config` 结构体保留但已无生产路径使用，将来可能删除。
+  - 升级方法：把 `config.json` 中 `access_tokens` 的整段 Cookie 改写为环境变量 `KUAKE_COOKIE`（或放到 `.env` 中），凭证优先级 `KUAKE_COOKIE > KUAKE_PUS+KUAKE_PUUS > -cookies/--cookies` 不变。
+  - 多账号轮询能力**暂未保留**；如需恢复请提 issue。
+- **Go 版本**：`go.mod` 升至 Go **1.25**（受新依赖 `mark3labs/mcp-go` 约束）。
+
+### 新功能：`kuake-mcp` MCP server
+
+- 新增独立二进制 `kuake-mcp`（位于 `mcp/`），以 stdio JSON-RPC 协议把 14 个网盘操作暴露为 MCP 工具：`quark_user`、`quark_list`、`quark_info`、`quark_download`、`quark_upload`、`quark_create`、`quark_move`、`quark_copy`、`quark_rename`、`quark_delete`、`quark_share_create`、`quark_share_delete`、`quark_share_list`、`quark_share_save`。可与 Claude Code 等 MCP 客户端配合使用。
+- 新增 `internal/guard` 包：环境变量驱动的黑名单守门，控制可执行的操作（`KUAKE_DENY_OPS`）、远端路径（`KUAKE_DENY_PATHS`）、上传扩展名（`KUAKE_DENY_EXTS`）、上传体积上限（`KUAKE_MAX_UPLOAD_MB`）、下载沙箱根目录（`KUAKE_DOWNLOAD_DIR`）。
+- **MCP 安全硬化**（不可关闭，硬编码）：
+  - **下载** —— 校验远端 API 返回的 `file_name`，拒绝空、含 `/`、`\` 或 `..`，防止恶意 / 被污染的远端响应突破下载沙箱。
+  - **上传** —— 拒绝 `localPath` 落在系统路径（`/etc/`、`/proc/`、`/sys/`、`/dev/`、`/root/`、`/var/{log,lib,spool,db,root}/` 及 `/private/` 镜像）、凭证目录（`.ssh/`、`.aws/`、`.gnupg/`、`.kube/`、`.docker/`、`.config/gh/`）或敏感 basename（`id_rsa`、`id_ed25519`、`id_dsa`、`id_ecdsa`、`.netrc`、`.pgpass`、`.my.cnf`、`*_history`）；解析符号链接后再匹配，防止 symlink 绕过；macOS 的 `/var/folders/`、`/var/tmp/` 仍可使用。
+  - **share_save** —— 增加 `CheckPath(dst)`，使 `KUAKE_DENY_PATHS` 也能保护转存目标目录。
+- 新增 `mcp/server.go`、`mcp/main.go`、`mcp/tools/{types,file,share}.go`：stdio 端将 `os.Stdout` 重定向到 `stderr`，仅由 `Listen(...)` 写入真正的 stdout fd，避免任何库的 `fmt.Print*` 污染 JSON-RPC 通道；`KUAKE_COOKIE` 缺失时服务器仍能启动，每次工具调用返回明确错误（不直接退出，方便 MCP 客户端自检）。
+
+### 构建与文档
+
+- `build.sh` 新增 5 个平台的 `kuake-mcp` 产物：`kuake-mcp-{linux,darwin}-{amd64,arm64}` 与 `kuake-mcp-windows-amd64.exe`。
+- 新增仓库根 [`.mcp.json.example`](../.mcp.json.example)，作为 Claude Code MCP 集成模板（含 cookie + 黑名单/沙箱环境变量），`.mcp.json` 已加入 `.gitignore` 防误提交。
+- README、`docs/cli.md`、`.env.example`：删除 `-c` / `--config` 与 `config.json` 相关章节；新增 `kuake-mcp` 简介与专用环境变量参考表。
+
 ## v1.4.5
 
 ### BREAKING

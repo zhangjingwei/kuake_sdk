@@ -26,8 +26,11 @@ This project is licensed under **AGPL-3.0**. **Commercial use** (including SaaS 
 - User profile, directory listing, file metadata, upload/download, create folder, move/copy/rename/delete
 - Create and revoke shares, list shares, save others’ shares to your drive
 - JSON output and pipe-friendly mode (e.g. with `jq`); optional **OpenClaw** skill ([openclaw/kuake_skill/](openclaw/kuake_skill/)): install `kuake` from [Releases](https://github.com/zhangjingwei/kuake_cli/releases), add it to `PATH`, set `KUAKE_COOKIE` (see [openclaw/kuake_skill/SKILL.md](openclaw/kuake_skill/SKILL.md) and [docs/cli.md](docs/cli.md))
+- **`kuake-mcp` MCP server**: a stdio MCP server exposing the 14 drive operations as MCP tools for clients like Claude Code. An env-driven blacklist (`KUAKE_DENY_OPS` / `KUAKE_DENY_PATHS` / `KUAKE_DENY_EXTS` / `KUAKE_MAX_UPLOAD_MB` / `KUAKE_DOWNLOAD_DIR`) restricts which operations and paths the MCP client can reach (see [.mcp.json.example](.mcp.json.example))
 
-For full CLI usage see [docs/cli.md](docs/cli.md). Copy [.env.example](.env.example) as a template for environment variables. If a `.env` file exists, `kuake` loads it from the current working directory and from the directory of `-c` / `--config` after parsing flags (set `KUAKE_LOAD_DOTENV=0` to disable). Values already exported in the shell are not overwritten.
+> **v1.5.0 BREAKING:** `config.json` support has been removed. Credentials must come from `KUAKE_COOKIE`, `KUAKE_PUS+KUAKE_PUUS`, or `-cookies` only; the `-c, --config` flag is gone. Migrate by moving the token into `KUAKE_COOKIE` (a `.env` file works).
+
+For full CLI usage see [docs/cli.md](docs/cli.md). Copy [.env.example](.env.example) as a template for environment variables. If a `.env` file exists, `kuake` loads it from the current working directory after parsing flags (set `KUAKE_LOAD_DOTENV=0` to disable). Values already exported in the shell are not overwritten.
 
 More documentation:
 
@@ -43,7 +46,7 @@ More documentation:
 
 ### Build from source
 
-Requires **Go 1.21+** (as in `go.mod`) and Git.
+Requires **Go 1.25+** (as in `go.mod`) and Git.
 
 ```bash
 git clone https://github.com/zhangjingwei/kuake_cli.git
@@ -52,7 +55,7 @@ chmod +x build.sh
 ./build.sh
 ```
 
-Artifacts are written under `dist/`.
+Artifacts are written under `dist/`: CLI as `kuake-{version}-{os}-{arch}` and MCP server as `kuake-mcp-{os}-{arch}` (5 platforms).
 
 ### Prebuilt binaries
 
@@ -69,7 +72,7 @@ Download the archive for your OS from [Releases](https://github.com/zhangjingwei
 ./kuake upload "file.txt" "/file.txt"
 ```
 
-See [docs/cli.md](docs/cli.md) for flags, credential fallbacks, and `-c` / `--config`. For running from source during development, see **Development** below.
+See [docs/cli.md](docs/cli.md) for flags and credential fallbacks. For running from source during development, see **Development** below.
 
 ## Documentation
 
@@ -79,6 +82,7 @@ See [docs/cli.md](docs/cli.md) for flags, credential fallbacks, and `-c` / `--co
 | [docs/CHANGELOG.md](docs/CHANGELOG.md) | Release history |
 | [docs/DISCLAIMER.md](docs/DISCLAIMER.md) | Full disclaimer |
 | [openclaw/kuake_skill/](openclaw/kuake_skill/) | **OpenClaw users:** add the folder that contains `SKILL.md` to your OpenClaw skill paths; install `kuake` from [Releases](https://github.com/zhangjingwei/kuake_cli/releases) and `PATH`, configure `KUAKE_COOKIE` per [docs/cli.md](docs/cli.md). No other files from this repo are required. |
+| [.mcp.json.example](.mcp.json.example) | Claude Code MCP integration template for `kuake-mcp`: shows `KUAKE_COOKIE` plus blacklist/sandbox env vars. Copy to `.mcp.json` with your real cookie (already in `.gitignore`). |
 
 ## Development
 

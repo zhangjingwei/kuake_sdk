@@ -26,8 +26,11 @@
 - 用户信息与网盘目录列表、文件详情、上传/下载、创建目录、移动/复制/重命名/删除
 - 分享创建与取消、分享列表、转存他人分享
 - JSON 输出、管道模式（与 `jq` 等组合）；可选 **OpenClaw** 技能（见 [openclaw/kuake_skill/](openclaw/kuake_skill/)）：普通用户只需安装 [Releases](https://github.com/zhangjingwei/kuake_cli/releases) 中的 `kuake`、配置 `PATH` 与 `KUAKE_COOKIE`（说明见 [openclaw/kuake_skill/SKILL.md](openclaw/kuake_skill/SKILL.md) 与 [docs/cli.md](docs/cli.md)）
+- **`kuake-mcp` MCP server**：以 stdio 方式将 14 个网盘操作暴露为 MCP 工具，配合 Claude Code 等 MCP 客户端使用；通过 `KUAKE_DENY_OPS` / `KUAKE_DENY_PATHS` / `KUAKE_DENY_EXTS` / `KUAKE_MAX_UPLOAD_MB` / `KUAKE_DOWNLOAD_DIR` 等环境变量控制可执行的操作与沙箱（见 [.mcp.json.example](.mcp.json.example)）
 
-更多用法见 [docs/cli.md](docs/cli.md)。环境变量模板见 [.env.example](.env.example)；存在 `.env` 时 `kuake` 会从当前目录及 `-c` 配置所在目录自动加载（可用 `KUAKE_LOAD_DOTENV=0` 关闭），不覆盖已 export 的变量。
+> **v1.5.0 BREAKING**：`config.json` 已不再支持，凭证只从 `KUAKE_COOKIE` / `KUAKE_PUS+KUAKE_PUUS` / `-cookies` 三种环境/参数方式读取；`-c, --config` 选项已移除。升级请将原 `config.json` 中的 token 改写为 `.env` 中的 `KUAKE_COOKIE`。
+
+更多用法见 [docs/cli.md](docs/cli.md)。环境变量模板见 [.env.example](.env.example)；存在 `.env` 时 `kuake` 会从当前工作目录加载（可用 `KUAKE_LOAD_DOTENV=0` 关闭），不覆盖已 export 的变量。
 
 更多文档见：
 
@@ -43,7 +46,7 @@
 
 ### 从源码构建
 
-需要 **Go 1.21+**（与 `go.mod` 一致）与 Git。
+需要 **Go 1.25+**（与 `go.mod` 一致）与 Git。
 
 ```bash
 git clone https://github.com/zhangjingwei/kuake_cli.git
@@ -52,7 +55,7 @@ chmod +x build.sh
 ./build.sh
 ```
 
-构建产物位于 `dist/`。
+构建产物位于 `dist/`：CLI 为 `kuake-{version}-{os}-{arch}`；MCP server 为 `kuake-mcp-{os}-{arch}`（5 平台）。
 
 ### 预编译二进制
 
@@ -80,6 +83,7 @@ chmod +x build.sh
 | [docs/CHANGELOG.md](docs/CHANGELOG.md)         | 版本变更记录                                                             |
 | [docs/DISCLAIMER.md](docs/DISCLAIMER.md)       | 完整免责声明                                                             |
 | [openclaw/kuake_skill/](openclaw/kuake_skill/) | 给 **OpenClaw 普通用户**：把内含 `SKILL.md` 的文件夹配进 OpenClaw 的技能目录；另从 [Releases](https://github.com/zhangjingwei/kuake_cli/releases) 安装 `kuake` 并加入 `PATH`，按 [docs/cli.md](docs/cli.md) 配置 `KUAKE_COOKIE` 等即可，无需本仓库其它文件 |
+| [.mcp.json.example](.mcp.json.example)         | `kuake-mcp` MCP server 的 Claude Code 集成模板：列出 `KUAKE_COOKIE` 与黑名单/沙箱环境变量；复制为 `.mcp.json` 并填入实际 cookie 即可（已加入 `.gitignore`，不会被提交） |
 
 
 ## 参与开发
