@@ -14,13 +14,12 @@ func TestUploadFileHashCtx_Integration(t *testing.T) {
 		t.Skip("Skipping integration test. Set INTEGRATION_TEST=1 to run.")
 	}
 
-	// 检查配置文件是否存在
-	configPath := "config.json"
-	if _, err := os.Stat(configPath); os.IsNotExist(err) {
-		t.Skipf("Skipping integration test. Config file not found: %s", configPath)
+	cookie := os.Getenv("KUAKE_COOKIE")
+	if cookie == "" {
+		t.Skip("Skipping integration test. KUAKE_COOKIE not set.")
 	}
 
-	client := NewQuarkClient(configPath)
+	client := NewQuarkClient(cookie)
 	if client == nil {
 		t.Fatal("Failed to create test client")
 	}
