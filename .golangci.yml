@@ -1,10 +1,12 @@
 # 起步配置：先保证 CI 稳定，再逐步打开 staticcheck / errcheck / unused 等。
 # 本地：`golangci-lint run ./...`
+version: "2"
+
 run:
   timeout: 5m
 
 linters:
-  disable-all: true
+  default: none
   enable:
     - govet
     # 与默认 `go test -vet=off` 之外的增量质量；后续可启用例如：
