@@ -161,6 +161,9 @@ func quarkShareSave(client *sdk.QuarkClient, g *guard.Guard) ToolEntry {
 		if err := g.CheckOp("share_save"); err != nil {
 			return guardError(err)
 		}
+		if err := g.CheckPath(dst); err != nil {
+			return guardError(err)
+		}
 
 		shareInfo, err := client.GetShareInfo(shareURL)
 		if err != nil {

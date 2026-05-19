@@ -106,6 +106,9 @@ func quarkDownload(client *sdk.QuarkClient, g *guard.Guard) ToolEntry {
 		}
 		fid, _ := info.Data["fid"].(string)
 		fileName, _ := info.Data["file_name"].(string)
+		if err := g.CheckRemoteFileName(fileName); err != nil {
+			return guardError(err)
+		}
 
 		destDir := filepath.Join(g.DownloadDir(), localSubDir)
 		if err := client.DownloadFile(fid, destDir, fileName, nil); err != nil {
@@ -149,6 +152,9 @@ func quarkUpload(client *sdk.QuarkClient, g *guard.Guard) ToolEntry {
 			return guardError(err)
 		}
 		if err := g.CheckPath(remoteDir); err != nil {
+			return guardError(err)
+		}
+		if err := g.CheckUploadLocalPath(localPath); err != nil {
 			return guardError(err)
 		}
 		fi, err := os.Stat(localPath)

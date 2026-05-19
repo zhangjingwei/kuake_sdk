@@ -117,3 +117,132 @@ func TestDownloadDir_Custom(t *testing.T) {
 		t.Errorf("expected /tmp/quark, got %q", g.DownloadDir())
 	}
 }
+
+func TestCheckRemoteFileName(t *testing.T) {
+	g := NewGuard()
+	cases := []struct {
+		name    string
+		wantErr bool
+	}{
+		{"normal.txt", false},
+		{"中文文件.pdf", false},
+		{"name with space.bin", false},
+		{"", true},
+		{"../escape.txt", true},
+		{"a/b.txt", true},
+		{"a\\b.txt", true},
+		{"..", true},
+		{".hidden", false}, // dotfile basename allowed; the LLM picked the remote path explicitly
+	}
+	for _, c := range cases {
+		err := g.CheckRemoteFileName(c.name)
+		if c.wantErr && err == nil {
+			t.Errorf("CheckRemoteFileName(%q): expected error", c.name)
+		}
+		if !c.wantErr && err != nil {
+			t.Errorf("CheckRemoteFileName(%q): unexpected error: %v", c.name, err)
+		}
+	}
+}
+
+func TestCheckUploadLocalPath_SystemPaths(t *testing.T) {
+	g := NewGuard()
+	cases := []string{
+		"/etc/passwd",
+		"/etc/shadow",
+		"/var/log/auth.log",
+		"/var/lib/postgresql/data",
+		"/var/spool/cron/crontabs/root",
+		"/proc/self/environ",
+		"/sys/class/net/eth0/address",
+		"/dev/zero",
+		"/root/.bashrc",
+		"/private/etc/master.passwd",
+	}
+	for _, p := range cases {
+		if err := g.CheckUploadLocalPath(p); err == nil {
+			t.Errorf("CheckUploadLocalPath(%q): expected error", p)
+		}
+	}
+}
+
+func TestCheckUploadLocalPath_AllowsVarTmpAndFolders(t *testing.T) {
+	g := NewGuard()
+	// macOS user-space temp roots — must not be blanket-rejected.
+	cases := []string{
+		"/var/tmp/build.log",
+		"/var/folders/8w/abcdef/T/work.txt",
+	}
+	for _, p := range cases {
+		if err := g.CheckUploadLocalPath(p); err != nil {
+			t.Errorf("CheckUploadLocalPath(%q): unexpected error: %v", p, err)
+		}
+	}
+}
+
+func TestCheckUploadLocalPath_CredentialDirs(t *testing.T) {
+	tmp := t.TempDir()
+	g := NewGuard()
+	cases := []string{
+		tmp + "/.ssh/id_rsa",
+		tmp + "/.aws/credentials",
+		tmp + "/.gnupg/secring.gpg",
+		tmp + "/.kube/config",
+		tmp + "/.docker/config.json",
+		tmp + "/sub/.config/gh/hosts.yml",
+	}
+	for _, p := range cases {
+		if err := g.CheckUploadLocalPath(p); err == nil {
+			t.Errorf("CheckUploadLocalPath(%q): expected error", p)
+		}
+	}
+}
+
+func TestCheckUploadLocalPath_SensitiveBasenames(t *testing.T) {
+	tmp := t.TempDir()
+	g := NewGuard()
+	// Place files under a non-sensitive parent dir to isolate the basename rule.
+	cases := []string{
+		tmp + "/id_rsa",
+		tmp + "/id_ed25519",
+		tmp + "/id_dsa",
+		tmp + "/id_ecdsa",
+		tmp + "/.netrc",
+		tmp + "/.pgpass",
+		tmp + "/.my.cnf",
+	}
+	for _, p := range cases {
+		if err := g.CheckUploadLocalPath(p); err == nil {
+			t.Errorf("CheckUploadLocalPath(%q): expected error (sensitive basename)", p)
+		}
+	}
+}
+
+func TestCheckUploadLocalPath_NormalFilesAllowed(t *testing.T) {
+	tmp := t.TempDir()
+	g := NewGuard()
+	cases := []string{
+		tmp + "/normal.txt",
+		tmp + "/sub/dir/file.bin",
+		tmp + "/中文.pdf",
+	}
+	for _, p := range cases {
+		if err := g.CheckUploadLocalPath(p); err != nil {
+			t.Errorf("CheckUploadLocalPath(%q): unexpected error: %v", p, err)
+		}
+	}
+}
+
+func TestCheckUploadLocalPath_SymlinkEscape(t *testing.T) {
+	// A symlink that points at /etc must be rejected even when the user-supplied
+	// path looks innocent — EvalSymlinks should resolve to /etc.
+	tmp := t.TempDir()
+	link := tmp + "/innocent.txt"
+	if err := os.Symlink("/etc/passwd", link); err != nil {
+		t.Skipf("symlink not supported on this platform: %v", err)
+	}
+	g := NewGuard()
+	if err := g.CheckUploadLocalPath(link); err == nil {
+		t.Errorf("CheckUploadLocalPath(%q): expected error (symlink to /etc)", link)
+	}
+}
