@@ -2807,9 +2807,19 @@ func (qc *QuarkClient) GetDownloadURL(fid string) (string, error) {
 	if err != nil {
 		errStr := err.Error()
 		if strings.Contains(errStr, "23018") || strings.Contains(errStr, "download file size limit") {
-			return "", fmt.Errorf("超过文件下载大小限制，请使用客户端下载")
+			// 网页请求对大文件返回 23018。使用桌面客户端标识重试同一接口，
+			// 服务端会返回可供客户端使用的下载链接。
+			desktopEndpoint := FILE_DOWNLOAD + "?sys=win32&ve=2.5.56&ut=&guid="
+			desktopHeaders := map[string]string{
+				"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) quark-cloud-drive/2.5.56 Chrome/100.0.4896.160 Electron/18.3.5.12-a038f7b798 Safari/537.36 Channel/pckk_other_ch",
+			}
+			respMap, err = qc.makeRequest("POST", desktopEndpoint, bytes.NewBuffer(jsonData), desktopHeaders)
+			if err != nil {
+				return "", fmt.Errorf("desktop download fallback failed: %w", err)
+			}
+		} else {
+			return "", fmt.Errorf("download request failed: %w", err)
 		}
-		return "", fmt.Errorf("download request failed: %w", err)
 	}
 	code, _ := respMap["code"].(float64)
 	status, _ := respMap["status"].(float64)
@@ -3006,11 +3016,11 @@ func (qc *QuarkClient) DownloadFile(fid, destPath, fileName string, progressCall
 			return fmt.Errorf("create local dir: %w", err)
 		}
 	}
-	out, err := os.Create(path)
-	if err != nil {
-		return fmt.Errorf("create local file: %w", err)
+	partialPath := path + ".part"
+	var resumeOffset int64
+	if info, statErr := os.Stat(partialPath); statErr == nil && info.Mode().IsRegular() {
+		resumeOffset = info.Size()
 	}
-	defer out.Close()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Hour)
 	defer cancel()
@@ -3054,6 +3064,9 @@ func (qc *QuarkClient) DownloadFile(fid, destPath, fileName string, progressCall
 	if len(cookieParts) > 0 {
 		req.Header.Set("Cookie", strings.Join(cookieParts, "; "))
 	}
+	if resumeOffset > 0 {
+		req.Header.Set("Range", fmt.Sprintf("bytes=%d-", resumeOffset))
+	}
 	qc.warnDownloadCookieIncomplete()
 	qc.debugLogDownloadRequest(req)
 
@@ -3068,9 +3081,16 @@ func (qc *QuarkClient) DownloadFile(fid, destPath, fileName string, progressCall
 	if err != nil {
 		return fmt.Errorf("download request: %w", err)
 	}
-	defer resp.Body.Close()
 	qc.debugLogDownloadResponse(resp)
-	if resp.StatusCode != http.StatusOK {
+	if resumeOffset > 0 && (resp.StatusCode == http.StatusPreconditionFailed || resp.StatusCode == http.StatusRequestedRangeNotSatisfiable) {
+		_ = resp.Body.Close()
+		if err := os.Remove(partialPath); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("reset partial file: %w", err)
+		}
+		return qc.DownloadFile(fid, path, fileName, progressCallback)
+	}
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusPartialContent {
+		defer resp.Body.Close()
 		body, _ := io.ReadAll(resp.Body)
 		errStr := fmt.Sprintf("download failed: status %d, body: %s", resp.StatusCode, string(body))
 		if resp.StatusCode == http.StatusForbidden && !qc.Debug {
@@ -3078,11 +3098,29 @@ func (qc *QuarkClient) DownloadFile(fid, destPath, fileName string, progressCall
 		}
 		return fmt.Errorf("%s", errStr)
 	}
+	defer resp.Body.Close()
+	appendMode := resumeOffset > 0 && resp.StatusCode == http.StatusPartialContent
+	if !appendMode {
+		resumeOffset = 0
+	}
+	flags := os.O_CREATE | os.O_WRONLY
+	if appendMode {
+		flags |= os.O_APPEND
+	} else {
+		flags |= os.O_TRUNC
+	}
+	out, err := os.OpenFile(partialPath, flags, 0o644)
+	if err != nil {
+		return fmt.Errorf("open partial file: %w", err)
+	}
 	var total int64 = -1
 	if resp.ContentLength >= 0 {
-		total = resp.ContentLength
+		total = resumeOffset + resp.ContentLength
 	}
-	var written int64
+	written := resumeOffset
+	if progressCallback != nil {
+		progressCallback(&DownloadProgress{Downloaded: written, Total: total})
+	}
 	buf := make([]byte, 32*1024)
 	for {
 		nr, errRead := resp.Body.Read(buf)
@@ -3090,6 +3128,7 @@ func (qc *QuarkClient) DownloadFile(fid, destPath, fileName string, progressCall
 			nw, errWrite := out.Write(buf[:nr])
 			written += int64(nw)
 			if errWrite != nil {
+				_ = out.Close()
 				return fmt.Errorf("write file: %w", errWrite)
 			}
 			if progressCallback != nil {
@@ -3100,8 +3139,22 @@ func (qc *QuarkClient) DownloadFile(fid, destPath, fileName string, progressCall
 			break
 		}
 		if errRead != nil {
+			_ = out.Close()
 			return fmt.Errorf("read body: %w", errRead)
 		}
+	}
+	if err := out.Sync(); err != nil {
+		_ = out.Close()
+		return fmt.Errorf("sync partial file: %w", err)
+	}
+	if err := out.Close(); err != nil {
+		return fmt.Errorf("close partial file: %w", err)
+	}
+	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("replace destination file: %w", err)
+	}
+	if err := os.Rename(partialPath, path); err != nil {
+		return fmt.Errorf("finalize download: %w", err)
 	}
 	return nil
 }
