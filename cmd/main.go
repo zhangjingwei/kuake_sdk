@@ -217,7 +217,8 @@ Options:
 Auth:
   Precedence: KUAKE_COOKIE, KUAKE_PUS+KUAKE_PUUS, -cookies/--cookies, persisted Cookie.
   Persist the current environment Cookie with: kuake auth save
-  Stored at user config dir/kuake/credentials.json (0600); KUAKE_CONFIG_DIR overrides the directory.
+  Stored at user config dir/kuake/credentials.json (0600 on Unix; current-user-only ACL on Windows).
+  KUAKE_CONFIG_DIR overrides the directory.
   Optional .env: if .env exists in cwd, load it before creating the client (does not override existing env vars). Set KUAKE_LOAD_DOTENV=0 to disable.
 
 Commands:

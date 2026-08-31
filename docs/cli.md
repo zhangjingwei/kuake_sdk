@@ -42,7 +42,9 @@ kuake user
 ```
 
 默认路径为系统用户配置目录下的 `kuake/credentials.json`（Linux 通常为
-`~/.config/kuake/credentials.json`）。配置目录权限为 `0700`，文件权限为 `0600`。
+`~/.config/kuake/credentials.json`）。Linux/macOS 上配置目录权限为 `0700`、文件权限为
+`0600`；Windows 上目录和文件使用禁止继承的 ACL，仅向当前进程用户 SID 授予访问权限，
+不依赖 `os.Chmod` 模拟 Unix 权限。
 `KUAKE_CONFIG_DIR` 可以覆盖配置目录。使用 `kuake auth clear` 删除持久化凭证。
 `auth status` 仅输出 Cookie 名称，不输出任何值。
 

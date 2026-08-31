@@ -43,7 +43,7 @@ func saveStoredCookie(cookie string) (string, error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return "", fmt.Errorf("create credentials directory: %w", err)
 	}
-	if err := os.Chmod(dir, 0o700); err != nil {
+	if err := secureCredentialPath(dir, true); err != nil {
 		return "", fmt.Errorf("secure credentials directory: %w", err)
 	}
 	payload, err := json.MarshalIndent(storedCredentials{Version: 1, Cookie: cookie}, "", "  ")
@@ -56,9 +56,9 @@ func saveStoredCookie(cookie string) (string, error) {
 	}
 	temporaryPath := temporary.Name()
 	defer os.Remove(temporaryPath)
-	if err := temporary.Chmod(0o600); err != nil {
+	if err := secureCredentialPath(temporaryPath, false); err != nil {
 		_ = temporary.Close()
-		return "", err
+		return "", fmt.Errorf("secure temporary credentials file: %w", err)
 	}
 	if _, err := temporary.Write(payload); err != nil {
 		_ = temporary.Close()
@@ -74,7 +74,7 @@ func saveStoredCookie(cookie string) (string, error) {
 	if err := os.Rename(temporaryPath, path); err != nil {
 		return "", fmt.Errorf("install credentials file: %w", err)
 	}
-	if err := os.Chmod(path, 0o600); err != nil {
+	if err := secureCredentialPath(path, false); err != nil {
 		return "", fmt.Errorf("secure credentials file: %w", err)
 	}
 	return path, nil

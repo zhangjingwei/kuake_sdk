@@ -1182,6 +1182,64 @@ func TestDownloadFileResumesPartialDownload(t *testing.T) {
 	}
 }
 
+func TestDownloadFileRestartsWhenContentRangeDoesNotMatchPartialFile(t *testing.T) {
+	content := []byte("hello resumable world")
+	var blobRequests int
+	var ranges []string
+	var server *httptest.Server
+	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case FILE_DOWNLOAD:
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"code": 0, "status": 200,
+				"data": []map[string]string{{"download_url": server.URL + "/blob"}},
+			})
+		case "/blob":
+			blobRequests++
+			ranges = append(ranges, r.Header.Get("Range"))
+			if blobRequests == 1 {
+				w.Header().Set("Content-Range", fmt.Sprintf("bytes 7-%d/%d", len(content)-1, len(content)))
+				w.WriteHeader(http.StatusPartialContent)
+				_, _ = w.Write(content[7:])
+				return
+			}
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write(content)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	qc := NewQuarkClient("__pus=test; __puus=test")
+	qc.SetBaseURL(server.URL)
+	qc.authCheckValid = true
+	qc.lastAuthCheck = time.Now()
+	destination := filepath.Join(t.TempDir(), "result.bin")
+	if err := os.WriteFile(destination+".part", []byte("wrong!"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := qc.DownloadFile("aea936a39e444e30956165f496c19f16", destination, "result.bin", nil); err != nil {
+		t.Fatal(err)
+	}
+	if blobRequests != 2 {
+		t.Fatalf("blob requests = %d, want 2", blobRequests)
+	}
+	if len(ranges) != 2 || ranges[0] != "bytes=6-" || ranges[1] != "" {
+		t.Fatalf("Range headers = %#v, want [\"bytes=6-\" \"\"]", ranges)
+	}
+	got, err := os.ReadFile(destination)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != string(content) {
+		t.Fatalf("downloaded content = %q, want %q", got, content)
+	}
+	if _, err := os.Stat(destination + ".part"); !os.IsNotExist(err) {
+		t.Fatalf("partial file still exists: %v", err)
+	}
+}
+
 func TestDownloadFile_InvalidFid_ReturnsValidationError(t *testing.T) {
 	qc := &QuarkClient{}
 	err := qc.DownloadFile("bad/fid", "", "t.bin", nil)

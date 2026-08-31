@@ -22,6 +22,7 @@ import (
 	"path"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -2980,6 +2981,36 @@ func (qc *QuarkClient) debugLogDownloadResponse(resp *http.Response) {
 	}
 }
 
+func parseContentRangeStart(value string) (int64, error) {
+	fields := strings.Fields(strings.TrimSpace(value))
+	if len(fields) != 2 || fields[0] != "bytes" {
+		return 0, fmt.Errorf("invalid Content-Range %q", value)
+	}
+	byteRange, completeLengthText, ok := strings.Cut(fields[1], "/")
+	if !ok || completeLengthText == "" {
+		return 0, fmt.Errorf("invalid Content-Range %q", value)
+	}
+	startText, endText, ok := strings.Cut(byteRange, "-")
+	if !ok || startText == "" || endText == "" {
+		return 0, fmt.Errorf("invalid Content-Range %q", value)
+	}
+	start, err := strconv.ParseInt(startText, 10, 64)
+	if err != nil || start < 0 {
+		return 0, fmt.Errorf("invalid Content-Range %q", value)
+	}
+	end, err := strconv.ParseInt(endText, 10, 64)
+	if err != nil || end < start {
+		return 0, fmt.Errorf("invalid Content-Range %q", value)
+	}
+	if completeLengthText != "*" {
+		completeLength, err := strconv.ParseInt(completeLengthText, 10, 64)
+		if err != nil || completeLength <= end {
+			return 0, fmt.Errorf("invalid Content-Range %q", value)
+		}
+	}
+	return start, nil
+}
+
 // DownloadFile 将文件下载到本地
 // fid: 文件ID；destPath: 本地路径（文件或目录，为目录时使用 fileName 作为文件名）；fileName: 远程文件名（当 destPath 为目录时使用）
 // progressCallback: 进度回调，可为 nil
@@ -3088,6 +3119,22 @@ func (qc *QuarkClient) DownloadFile(fid, destPath, fileName string, progressCall
 			return fmt.Errorf("reset partial file: %w", err)
 		}
 		return qc.DownloadFile(fid, path, fileName, progressCallback)
+	}
+	if resp.StatusCode == http.StatusPartialContent {
+		rangeStart, rangeErr := parseContentRangeStart(resp.Header.Get("Content-Range"))
+		if rangeErr != nil || rangeStart != resumeOffset {
+			_ = resp.Body.Close()
+			if resumeOffset == 0 {
+				if rangeErr != nil {
+					return rangeErr
+				}
+				return fmt.Errorf("unexpected Content-Range start %d for full download", rangeStart)
+			}
+			if err := os.Remove(partialPath); err != nil && !os.IsNotExist(err) {
+				return fmt.Errorf("reset partial file after Content-Range mismatch: %w", err)
+			}
+			return qc.DownloadFile(fid, path, fileName, progressCallback)
+		}
 	}
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusPartialContent {
 		defer resp.Body.Close()

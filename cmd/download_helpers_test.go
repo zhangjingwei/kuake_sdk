@@ -88,3 +88,22 @@ func TestParseDownloadArgs(t *testing.T) {
 		t.Fatal("expected invalid workers error")
 	}
 }
+
+func TestResolveLocalDownloadPathStaysWithinRoot(t *testing.T) {
+	root := t.TempDir()
+	got, err := resolveLocalDownloadPath(root, "nested/file.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := filepath.Abs(filepath.Join(root, "nested", "file.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != want {
+		t.Fatalf("got %q, want %q", got, want)
+	}
+
+	if _, err := resolveLocalDownloadPath(root, "../escape.txt"); err == nil {
+		t.Fatal("expected parent traversal to be rejected")
+	}
+}

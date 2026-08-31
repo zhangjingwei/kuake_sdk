@@ -94,6 +94,26 @@ func parseDownloadArgs(args []string) ([]string, int, error) {
 	return positional, workers, nil
 }
 
+func resolveLocalDownloadPath(localRoot, relative string) (string, error) {
+	rootAbsolute, err := filepath.Abs(localRoot)
+	if err != nil {
+		return "", fmt.Errorf("resolve local download root: %w", err)
+	}
+	targetAbsolute, err := filepath.Abs(filepath.Join(rootAbsolute, filepath.FromSlash(relative)))
+	if err != nil {
+		return "", fmt.Errorf("resolve local download path: %w", err)
+	}
+	relativeToRoot, err := filepath.Rel(rootAbsolute, targetAbsolute)
+	if err != nil {
+		return "", fmt.Errorf("validate local download path: %w", err)
+	}
+	if filepath.IsAbs(relativeToRoot) || relativeToRoot == ".." ||
+		strings.HasPrefix(relativeToRoot, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("unsafe local download path derived from remote path: %s", relative)
+	}
+	return targetAbsolute, nil
+}
+
 func listDirectoryItems(client *sdk.QuarkClient, remoteRoot, localRoot string) ([]directoryDownloadItem, int, int64, error) {
 	queue := []string{strings.TrimSuffix(remoteRoot, "/")}
 	items := make([]directoryDownloadItem, 0)
@@ -127,7 +147,10 @@ func listDirectoryItems(client *sdk.QuarkClient, remoteRoot, localRoot string) (
 			if relative == "" || relative == ".." || strings.HasPrefix(relative, "../") {
 				return nil, 0, 0, fmt.Errorf("unsafe remote path returned: %s", child.Path)
 			}
-			localPath := filepath.Join(localRoot, filepath.FromSlash(relative))
+			localPath, err := resolveLocalDownloadPath(localRoot, relative)
+			if err != nil {
+				return nil, 0, 0, fmt.Errorf("unsafe remote path returned: %s: %w", child.Path, err)
+			}
 			if child.IsDirectory {
 				if err := os.MkdirAll(localPath, 0o755); err != nil {
 					return nil, 0, 0, err

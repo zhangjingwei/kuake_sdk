@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+- Windows 持久化 Cookie 改用禁止继承、仅允许当前用户 SID 访问的 ACL；Linux/macOS 继续使用目录 `0700`、文件 `0600`。
+- 目录下载在远端路径转换为本地路径后，通过绝对路径与 `filepath.Rel` 再次校验目标位于下载根目录内，阻止 Windows 反斜杠路径穿越。
+- `.part` 断点续传会校验 HTTP `206 Content-Range` 起点与本地偏移一致；不一致时删除临时文件并无 Range 重新完整下载。
+- CI 增加 Windows 测试；已知的主分支 `internal/guard` Windows 测试暂不纳入该平台任务。
+
 ## v1.5.0
 
 ### BREAKING

@@ -63,7 +63,7 @@ chmod +x build.sh
 
 ## 快速开始
 
-1. 临时设置完整 Cookie 后执行 `./kuake auth save`；凭证会保存为权限 `0600` 的用户配置文件。也可以继续使用 `.env`。
+1. 临时设置完整 Cookie 后执行 `./kuake auth save`；凭证会保存到用户配置目录，在 Linux/macOS 上使用 `0600` 文件权限，在 Windows 上使用仅允许当前用户访问的受保护 ACL。也可以继续使用 `.env`。
 2. 在项目目录执行（二进制名以你本机为准）：
 
 ```bash
